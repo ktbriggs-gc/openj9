@@ -32,7 +32,10 @@ target_sources(j9vm_gc_glue
 		${CMAKE_CURRENT_SOURCE_DIR}/ConcurrentMarkingDelegate.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/ConcurrentSafepointCallbackJava.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/EnvironmentDelegate.cpp
-		${CMAKE_CURRENT_SOURCE_DIR}/GlobalCollectorDelegate.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/EvacuatorDelegate.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/EvacuatorRootClearer.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/EvacuatorRootScanner.cpp
+)		${CMAKE_CURRENT_SOURCE_DIR}/GlobalCollectorDelegate.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/JNICriticalRegion.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/MarkingDelegate.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/MarkingSchemeRootClearer.cpp
