@@ -183,8 +183,7 @@ ppc64le_linux:
   node_labels:
     build: 'ci.role.build && hw.arch.ppc64le && sw.os.ubuntu'
   extra_configure_options:
-    8: '--enable-jitserver'
-    11: '--enable-jitserver'
+    all: '--enable-jitserver'
   build_env:
     vars: 'PATH+GCC7=/usr/local/gcc-7.5.0/bin LD_LIBRARY_PATH=/usr/local/gcc-7.5.0/lib64:$LD_LIBRARY_PATH'
 #========================================#
@@ -248,10 +247,10 @@ s390x_linux_jit:
 ppc64_aix:
   extends: ['debuginfo', 'freemarker', 'openjdk_reference_repo', 'openssl']
   boot_jdk:
-    8: '/usr/java7'
-    11: '/usr/java11_64'
-    14: '/usr/java13_64'
-    next: '/usr/java13_64'
+    8: '/opt/java7'
+    11: '/opt/java11_64'
+    14: '/opt/java13_64'
+    next: '/opt/java13_64'
   release:
     all: 'aix-ppc64-server-release'
     8: 'aix-ppc64-normal-server-release'
@@ -289,8 +288,7 @@ x86-64_linux:
   node_labels:
     build: 'ci.role.build && hw.arch.x86 && sw.os.cent.6'
   extra_configure_options:
-    8: '--enable-jitserver'
-    11: '--enable-jitserver'
+    all: '--enable-jitserver'
   build_env:
     cmd: 'source /home/jenkins/set_gcc7.5.0_env'
     vars: 'OPENJ9_JAVA_OPTIONS=-Xdump:system+java:events=systhrow,filter=java/lang/ClassCastException,request=exclusive+prepwalk+preempt'

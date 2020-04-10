@@ -19,34 +19,11 @@
  *
  * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
  *******************************************************************************/
+#include "j9.h"
+#include "j9nonbuilder.h"
 
-#if !defined(VALUETYPEHELPERS_HPP_)
-#define VALUETYPEHELPERS_HPP_
+extern J9_CFUNC UDATA
+blankDumpSignalHandler(struct J9PortLibrary *portLibrary, U_32 gpType, void *gpInfo, void *arg);
 
-class ValueTypeHelpers {
-	/*
-	 * Data members
-	 */
-private:
-
-protected:
-
-public:
-
-	/*
-	 * Function members
-	 */
-private:
-
-protected:
-
-public:
-	static bool
-	isSubstitutable(J9VMThread *currentThread, j9object_t lhs, j9object_t rhs, UDATA startOffset, J9Class *clazz)
-	{
-		return false;
-	}
-
-};
-
-#endif /* VALUETYPEHELPERS_HPP_ */
+extern J9_CFUNC intptr_t
+dumpJitInfo(J9VMThread * currentThread, char *label, J9RASdumpContext *context);
