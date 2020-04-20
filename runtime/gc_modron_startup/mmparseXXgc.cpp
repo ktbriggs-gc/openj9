@@ -37,6 +37,7 @@
 
 #include "mmparse.h"
 
+#include "EvacuatorBase.hpp"
 #include "GCExtensions.hpp"
 #if defined(J9VM_GC_REALTIME)
 #include "Scheduler.hpp"
@@ -802,6 +803,66 @@ gcParseXXgcArguments(J9JavaVM *vm, char *optArg)
 			extensions->aliasInhibitingThresholdPercentage = ((double)percentage) / 100.0;
 
 			continue ;
+		}
+
+		if (try_scan(&scan_start, "recursiveMaximumStackDepth=")) {
+			/* Read in restricted inside copy size */
+			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorMaximumStackDepth, "recursiveMaximumStackDepth=")) {
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			if(MM_EvacuatorBase::min_scan_stack_depth > extensions->evacuatorMaximumStackDepth) {
+				j9nls_printf(PORTLIB,J9NLS_ERROR, J9NLS_GC_OPTIONS_VALUE_MUST_BE_ABOVE, "-XXgc:recursiveMaximumStackDepth", (UDATA)MM_EvacuatorBase::min_scan_stack_depth - 1);
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			continue;
+		}
+
+		if (try_scan(&scan_start, "recursiveMaximumInsideCopySize=")) {
+			/* Read in restricted inside copy size */
+			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorMaximumInsideCopySize, "recursiveMaximumInsideCopySize=")) {
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			if(MM_EvacuatorBase::min_inside_object_size > extensions->evacuatorMaximumInsideCopySize) {
+				j9nls_printf(PORTLIB,J9NLS_ERROR, J9NLS_GC_OPTIONS_VALUE_MUST_BE_ABOVE, "-XXgc:recursiveMaximumInsideCopySize", (UDATA)MM_EvacuatorBase::min_inside_object_size - 1);
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			continue;
+		}
+
+		if (try_scan(&scan_start, "recursiveMaximumInsideCopyDistance=")) {
+			/* Read in restricted inside copy distance */
+			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorMaximumInsideCopyDistance, "recursiveMaximumInsideCopyDistance=")) {
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			continue;
+		}
+
+		if (try_scan(&scan_start, "recursiveWorkVolumeQuantum=")) {
+			/* Read in evacuator work quanta */
+			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorWorkQuantumSize, "recursiveWorkVolumeQuantum=")) {
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			if(MM_EvacuatorBase::min_workspace_size > extensions->evacuatorWorkQuantumSize) {
+				j9nls_printf(PORTLIB,J9NLS_ERROR, J9NLS_GC_OPTIONS_VALUE_MUST_BE_ABOVE, "-XXgc:recursiveWorkVolumeQuantum", (UDATA)MM_EvacuatorBase::min_workspace_size - 1);
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			continue;
+		}
+
+		if (try_scan(&scan_start, "recursiveWorkVolumeQuanta=")) {
+			/* Read in evacuator work quanta */
+			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorWorkQuanta, "recursiveWorkVolumeQuanta=")) {
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			continue;
 		}
 
 #if defined(OMR_GC_CONCURRENT_SCAVENGER)

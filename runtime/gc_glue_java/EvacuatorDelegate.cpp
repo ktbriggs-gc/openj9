@@ -195,22 +195,16 @@ MM_EvacuatorDelegate::scanIndirectObjects(omrobjectptr_t objectptr)
 		volatile omrobjectptr_t *slotPtr = NULL;
 		GC_ClassStaticsIterator classStaticsIterator(_env, classToScan);
 		while((slotPtr = classStaticsIterator.nextSlot()) != NULL) {
-			if (_evacuator->evacuateRootObject(slotPtr)) {
-				shouldBeRemembered = true;
-			}
-		}
-
-		GC_ConstantPoolObjectSlotIterator constantPoolObjectSlotIterator((J9JavaVM*)_env->getLanguageVM(), classToScan);
-		while ((slotPtr = constantPoolObjectSlotIterator.nextSlot()) != NULL) {
-			if (_evacuator->evacuateRootObject(slotPtr)) {
+			if (_evacuator->evacuateRootObject(slotPtr, true)) {
 				shouldBeRemembered = true;
 			}
 		}
 
 		slotPtr = (omrobjectptr_t *)&(classToScan->classObject);
-		if (_evacuator->evacuateRootObject(slotPtr)) {
+		if (_evacuator->evacuateRootObject(slotPtr, true)) {
 			shouldBeRemembered = true;
 		}
+
 		classToScan = classToScan->replacedClass;
 	} while (NULL != classToScan);
 

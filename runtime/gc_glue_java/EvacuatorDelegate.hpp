@@ -151,6 +151,7 @@ public:
 
 		switch(_objectModel->getScanType(objectptr)) {
 		case GC_ObjectModel::SCAN_MIXED_OBJECT:
+		case GC_ObjectModel::SCAN_MIXED_OBJECT_LINKED:
 			if (1 < (uintptr_t)clazz->instanceDescription) {
 				objectScanner = GC_MixedObjectScanner::newInstance(_env, objectptr, objectScannerState, flags);
 			}
