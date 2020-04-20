@@ -269,8 +269,6 @@ ppc64_aix:
       11: 'PATH+XLC=/opt/IBM/xlC/13.1.3/bin:/opt/IBM/xlc/13.1.3/bin'
       14: 'PATH+XLC=/opt/IBM/xlC/16.1.0/bin:/opt/IBM/xlc/16.1.0/bin CC=xlclang CXX=xlclang++'
       next: 'PATH+XLC=/opt/IBM/xlC/16.1.0/bin:/opt/IBM/xlc/16.1.0/bin CC=xlclang CXX=xlclang++'
-  excluded_tests:
-      - special.system
 #========================================#
 # Linux x86 64bits Compressed Pointers
 #========================================#
@@ -330,6 +328,8 @@ aarch64_linux:
   node_labels:
     build:
       11: 'ci.role.build && hw.arch.aarch64 && sw.os.cent.7'
+  build_env:
+    vars: 'PATH+TOOLS=/usr/local/gcc-7.5.0/bin'
 #========================================#
 # Linux Aarch 64bits Large Heap
 #========================================#
@@ -352,10 +352,10 @@ x86-64_windows:
   freemarker: '/cygdrive/c/openjdk/freemarker.jar'
   extra_configure_options:
     all: '--disable-ccache --with-cuda="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v9.0"'
-    8: '--with-freetype-include=/cygdrive/c/openjdk/freetype-2.5.3/include --with-freetype-lib=/cygdrive/c/openjdk/freetype-2.5.3/lib64 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1e-x86_64-VS2013'
-    11: '--with-toolchain-version=2017 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1e-x86_64-VS2017'
-    14: '--with-toolchain-version=2017 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1e-x86_64-VS2017'
-    next: '--with-toolchain-version=2017 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1e-x86_64-VS2017'
+    8: '--with-freetype-include=/cygdrive/c/openjdk/freetype-2.5.3/include --with-freetype-lib=/cygdrive/c/openjdk/freetype-2.5.3/lib64 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1f-x86_64-VS2013'
+    11: '--with-toolchain-version=2017 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1f-x86_64-VS2017'
+    14: '--with-toolchain-version=2017 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1f-x86_64-VS2017'
+    next: '--with-toolchain-version=2017 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1f-x86_64-VS2017'
   node_labels:
     build: 'ci.role.build && hw.arch.x86 && sw.os.windows'
   build_env:
@@ -378,7 +378,7 @@ x86-32_windows:
   release:
     8: 'windows-x86-normal-server-release'
   extra_configure_options:
-    8: '--with-freetype-include=/cygdrive/c/openjdk/freetype-2.5.3/include --with-freetype-lib=/cygdrive/c/openjdk/freetype-2.5.3/lib32 --with-target-bits=32 --disable-ccache --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1e-x86_32-VS2013'
+    8: '--with-freetype-include=/cygdrive/c/openjdk/freetype-2.5.3/include --with-freetype-lib=/cygdrive/c/openjdk/freetype-2.5.3/lib32 --with-target-bits=32 --disable-ccache --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1f-x86_32-VS2013'
   freemarker: '/cygdrive/c/openjdk/freemarker.jar'
   node_labels:
     build:

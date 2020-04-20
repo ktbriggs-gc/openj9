@@ -37,10 +37,9 @@
 #endif
 
 UDATA
-blankDumpSignalHandler(struct J9PortLibrary *portLibrary, U_32 gpType, void *gpInfo, void *arg)
+jitDumpSignalHandler(struct J9PortLibrary *portLibrary, U_32 gpType, void *gpInfo, void *arg)
    {
-   J9VMThread *vmThread = (J9VMThread *) arg;
-   TR_VerboseLog::writeLineLocked(TR_Vlog_JITDUMP, "vmThread=%p Recursive crash occurred. Aborting JIT dump.", vmThread);
+   TR_VerboseLog::writeLineLocked(TR_Vlog_JITDUMP, "vmThread = %p Recursive crash occurred. Aborting JIT dump.", reinterpret_cast<J9VMThread*>(arg));
 
    // Returning J9PORT_SIG_EXCEPTION_RETURN will make us come back to the same crashing instruction over and over
    //
@@ -128,16 +127,16 @@ static UDATA dumpCurrentILProtected(J9PortLibrary *portLib, void * opaqueParamet
       if ( ((vmThread->omrVMThread->vmState) & bitMask) == bitMask )  // if we are in the Codegen Phase
          {
          dbg->dumpMethodInstrs(logFile, "Post Binary Instructions", false, true);
-
-         dbg->print(logFile,comp->cg()->getSnippetList(), true);  // print Warm Snippets
-         dbg->print(logFile,comp->cg()->getSnippetList(), false);
-
+         dbg->print(logFile,comp->cg()->getSnippetList());
          dbg->dumpMixedModeDisassembly();
          }
-
-      // leaving to the very end in case there is a crash before this point.
-      comp->verifyTrees(comp->getMethodSymbol());
-      comp->verifyBlocks(comp->getMethodSymbol());
+      else
+         {
+         // Tree verification is only valid during optimizations as it relies on consistent node counts which are only
+         // valid before codegen, since the codegen will decrement the node counts as part of instruction selection
+         comp->verifyTrees(comp->getMethodSymbol());
+         comp->verifyBlocks(comp->getMethodSymbol());
+         }
 
       trfprintf(logFile, "</currentIL>\n");
       }
@@ -326,7 +325,7 @@ static TR_CompilationErrorCode recompileMethodForLog(
    // TODO: this is indiscriminately compiling as J9::DumpMethodRequest, which is wrong;
    //       should be fixed by checking if the method is indeed DLT, and compiling DLT if so
       {
-      J9::DumpMethodDetails details( ramMethod);
+      J9::JitDumpMethodDetails details(ramMethod);
       compInfo->compileMethod(vmThread, details, oldStartPC, TR_no, &compErrCode, &successfullyQueued, plan);
       }
 

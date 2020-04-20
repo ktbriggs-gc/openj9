@@ -27,9 +27,10 @@ SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-excepti
 <#elseif uma.spec.processor.aarch64>
   OBJCOPY := $(OPENJ9_CC_PREFIX)-objcopy
 <#elseif uma.spec.processor.riscv64 && uma.spec.flags.env_crossbuild.enabled>
-  AR := riscv64-unknown-linux-gnu-ar
-  AS := riscv64-unknown-linux-gnu-as
-  OBJCOPY := riscv64-unknown-linux-gnu-objcopy
+  RISCV_CROSSTOOLS_PREFIX ?= riscv64-unknown-linux-gnu
+  AR := $(RISCV_CROSSTOOLS_PREFIX)-ar
+  AS := $(RISCV_CROSSTOOLS_PREFIX)-as
+  OBJCOPY := $(RISCV_CROSSTOOLS_PREFIX)-objcopy
 <#else>
   OBJCOPY := objcopy
 </#if>
@@ -517,11 +518,18 @@ endif
 <#if uma.spec.processor.ppc && !uma.spec.type.aix>
 ifdef USE_PPC_GCC
 
-# special handling BytecodeInterpreter.cpp and DebugBytecodeInterpreter.cpp
-BytecodeInterpreter$(UMA_DOT_O) : BytecodeInterpreter.cpp
+# special handling BytecodeInterpreterFull.cpp, BytecodeInterpreterCompressed.cpp, DebugBytecodeInterpreterFull.cpp and DebugBytecodeInterpreterCompressed.cpp
+
+BytecodeInterpreterFull$(UMA_DOT_O) : BytecodeInterpreterFull.cpp
 	$(PPC_GCC_CXX) $(PPC_GCC_CXXFLAGS) -c $<
 
-DebugBytecodeInterpreter$(UMA_DOT_O) : DebugBytecodeInterpreter.cpp
+BytecodeInterpreterCompressed$(UMA_DOT_O) : BytecodeInterpreterCompressed.cpp
+	$(PPC_GCC_CXX) $(PPC_GCC_CXXFLAGS) -c $<
+
+DebugBytecodeInterpreterFull$(UMA_DOT_O) : DebugBytecodeInterpreterFull.cpp
+	$(PPC_GCC_CXX) $(PPC_GCC_CXXFLAGS) -c $<
+
+DebugBytecodeInterpreterCompressed$(UMA_DOT_O) : DebugBytecodeInterpreterCompressed.cpp
 	$(PPC_GCC_CXX) $(PPC_GCC_CXXFLAGS) -c $<
 
 MHInterpreter$(UMA_DOT_O) : MHInterpreter.cpp
