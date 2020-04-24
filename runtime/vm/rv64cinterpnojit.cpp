@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2001, 2020 IBM Corp. and others
+ * Copyright (c) 2019, 2020 IBM Corp. and others
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -20,12 +20,21 @@
  * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
  *******************************************************************************/
 
-#ifndef UNISTD_H
-#define UNISTD_H
+#include "BytecodeInterpreter.hpp"
+#include "ut_j9vm.h"
 
-/*
- * Assume we have POSIX priority scheduling, so OMR
- * doesn't complain it can't implement THREAD_YIELD_NEW.
+/* This code here should be removed once the JIT related code
+ * is implemented in rv64cinterp.m4.
  */
-#define _POSIX_PRIORITY_SCHEDULING
-#endif
+extern "C" {
+
+void
+c_cInterpreter(J9VMThread *currentThread)
+{
+	J9JavaVM *vm = currentThread->javaVM;
+	if (J9_BCLOOP_EXIT_INTERPRETER != vm->bytecodeLoop(currentThread)) {
+		Assert_VM_unreachable();
+	}
+}
+
+} /* extern "C" */
