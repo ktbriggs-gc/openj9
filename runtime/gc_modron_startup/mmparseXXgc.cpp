@@ -865,6 +865,20 @@ gcParseXXgcArguments(J9JavaVM *vm, char *optArg)
 			continue;
 		}
 
+		if (try_scan(&scan_start, "recursiveScanOptions=")) {
+			/* Read in evacuator tracing options */
+			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorScanOptions, "recursiveScanOptions=")) {
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			if(2 < extensions->evacuatorScanOptions) {
+				j9nls_printf(PORTLIB,J9NLS_ERROR,J9NLS_GC_OPTIONS_MUST_BE_NO_GREATER_THAN, "-XXgc:recursiveScanOptions", (UDATA)2);
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			continue;
+		}
+
 		if (try_scan(&scan_start, "recursiveTraceOptions=")) {
 			/* Read in evacuator tracing options */
 			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorTraceOptions, "recursiveTraceOptions=")) {
