@@ -339,14 +339,14 @@ MM_EvacuatorDelegate::getReferenceObjectScanner(omrobjectptr_t objectptr, void *
 
 		GC_SlotObject referentPtr(_env->getOmrVM(), J9GC_J9VMJAVALANGREFERENCE_REFERENT_ADDRESS(_env, objectptr));
 #if defined(EVACUATOR_DEBUG)
-		if (_controller->_debugger.isDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
+		if (_evacuator->isDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
 			debugDelegateReference(EVACUATOR_DEBUG_DELEGATE_REFERENCE_SCAN_HEAP, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, referentMustBeCleared,
 					isObjectInNewSpace, referentMustBeMarked, shouldScavengeReferenceObject);
 		}
 #endif /* defined(EVACUATOR_DEBUG) */
 		if (referentMustBeCleared) {
 #if defined(EVACUATOR_DEBUG)
-			if (_controller->_debugger.isDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
+			if (_evacuator->isDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
 				debugDelegateReference(EVACUATOR_DEBUG_DELEGATE_REFERENCE_CLEAR, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, referentMustBeCleared,
 						isObjectInNewSpace, referentMustBeMarked, shouldScavengeReferenceObject);
 			}
@@ -359,7 +359,7 @@ MM_EvacuatorDelegate::getReferenceObjectScanner(omrobjectptr_t objectptr, void *
 			}
 		} else if (shouldScavengeReferenceObject) {
 #if defined(EVACUATOR_DEBUG)
-			if (_controller->_debugger.isDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
+			if (_evacuator->isDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
 				debugDelegateReference(EVACUATOR_DEBUG_DELEGATE_REFERENCE_ADD, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, referentMustBeCleared,
 						isObjectInNewSpace, referentMustBeMarked, shouldScavengeReferenceObject);
 			}
@@ -371,7 +371,7 @@ MM_EvacuatorDelegate::getReferenceObjectScanner(omrobjectptr_t objectptr, void *
 		objectScanner = GC_ReferenceObjectScanner::newInstance(_env, objectptr, referentSlotAddress, objectScannerState, flags);
 	} else {
 #if defined(EVACUATOR_DEBUG)
-		if (_controller->_debugger.isDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
+		if (_evacuator->isDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
 			GC_SlotObject referentPtr(_env->getOmrVM(), J9GC_J9VMJAVALANGREFERENCE_REFERENT_ADDRESS(_env, objectptr));
 			UDATA referenceObjectType = J9CLASS_FLAGS((J9Class *)J9GC_J9OBJECT_CLAZZ(objectptr, _env)) & J9AccClassReferenceMask;
 			debugDelegateReference(EVACUATOR_DEBUG_DELEGATE_REFERENCE_SCAN_ROOT, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, false,

@@ -71,7 +71,7 @@ MM_EvacuatorRootClearer::scanUnfinalizedObjectsComplete(MM_EnvironmentBase *env)
 		reportScanningStarted(RootScannerEntity_UnfinalizedObjectsComplete);
 		_env->_currentTask->synchronizeGCThreads(_env, UNIQUE_ID);
 #if defined(EVACUATOR_DEBUG)
-		if (_scavenger->_debugger.isDebugCycle()) {
+		if (getEvacuator()->isDebugCycle()) {
 			OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
 			omrtty_printf("%5lu %2llu %2llu:   unfinal;\n", _scavenger->getEpoch()->gc, (uint64_t)_scavenger->getEpoch()->epoch, (uint64_t)getEvacuator()->getWorkerIndex());
 		}
@@ -124,7 +124,7 @@ MM_EvacuatorRootClearer::scanWeakReferencesComplete(MM_EnvironmentBase *env)
 	if (_scavenger->isAnyEvacuatorFlagSet(MM_EvacuatorDelegate::shouldScavengeWeakReferenceObjects | MM_EvacuatorDelegate::shouldScavengeSoftReferenceObjects)) {
 		_env->_currentTask->synchronizeGCThreads(_env, UNIQUE_ID);
 #if defined(EVACUATOR_DEBUG)
-		if (_scavenger->_debugger.isDebugCycle()) {
+		if (getEvacuator()->isDebugCycle()) {
 			OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
 			if (_scavenger->areAllEvacuatorFlagsSet(MM_EvacuatorDelegate::shouldScavengeWeakReferenceObjects | MM_EvacuatorDelegate::shouldScavengeSoftReferenceObjects)) {
 				omrtty_printf("%5lu %2llu %2llu: soft+weak;\n", _scavenger->getEpoch()->gc, (uint64_t)_scavenger->getEpoch()->epoch, (uint64_t)getEvacuator()->getWorkerIndex());
@@ -163,7 +163,7 @@ MM_EvacuatorRootClearer::scanPhantomReferencesComplete(MM_EnvironmentBase *env)
 		}
 
 #if defined(EVACUATOR_DEBUG)
-		if (_scavenger->_debugger.isDebugCycle()) {
+		if (getEvacuator()->isDebugCycle()) {
 			OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
 			omrtty_printf("%5lu %2llu %2llu:   phantom;\n", _scavenger->getEpoch()->gc, (uint64_t)_scavenger->getEpoch()->epoch, (uint64_t)getEvacuator()->getWorkerIndex());
 		}

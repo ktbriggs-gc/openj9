@@ -865,6 +865,15 @@ gcParseXXgcArguments(J9JavaVM *vm, char *optArg)
 			continue;
 		}
 
+		if (try_scan(&scan_start, "recursiveTraceOptions=")) {
+			/* Read in evacuator tracing options */
+			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorTraceOptions, "recursiveTraceOptions=")) {
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			continue;
+		}
+
 #if defined(OMR_GC_CONCURRENT_SCAVENGER)
 		if (try_scan(&scan_start, "debugConcurrentScavengerPageAlignment")) {
 			extensions->setDebugConcurrentScavengerPageAlignment(true);
