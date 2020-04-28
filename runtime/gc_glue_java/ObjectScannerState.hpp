@@ -29,6 +29,7 @@
 #define OBJECTSCANNERSTATE_HPP_
 
 #include "FlattenedArrayObjectScanner.hpp"
+#include "LinkedObjectScanner.hpp"
 #include "MixedObjectScanner.hpp"
 #include "PointerArrayObjectScanner.hpp"
 #include "ReferenceObjectScanner.hpp"
@@ -41,6 +42,7 @@
 typedef union GC_ObjectScannerState
 {
 	uint8_t mixed[sizeof(GC_MixedObjectScanner)];
+	uint8_t linked[sizeof(GC_LinkedObjectScanner)];
 	uint8_t reference[sizeof(GC_ReferenceObjectScanner)];
 	uint8_t pointerArray[sizeof(GC_PointerArrayObjectScanner)];
 	uint8_t flattenedArray[sizeof(GC_FlattenedArrayObjectScanner)];

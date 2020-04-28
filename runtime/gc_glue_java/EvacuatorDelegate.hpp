@@ -36,6 +36,7 @@
 #include "Forge.hpp"
 #include "ForwardedHeader.hpp"
 #include "IndexableObjectScanner.hpp"
+#include "LinkedObjectScanner.hpp"
 #include "MixedObjectScanner.hpp"
 #include "ObjectModel.hpp"
 
@@ -142,19 +143,17 @@ public:
 	GC_ObjectScanner *
 	getObjectScanner(omrobjectptr_t objectptr, void *objectScannerState, uintptr_t flags)
 	{
-		J9Class *clazz = J9GC_J9OBJECT_CLAZZ(objectptr, _env);
-
 		/* object class must have proper eye catcher */
-		Debug_MM_true((UDATA)0x99669966 == clazz->eyecatcher);
+		Debug_MM_true((UDATA)0x99669966 == J9GC_J9OBJECT_CLAZZ(objectptr, _env)->eyecatcher);
 		Debug_MM_true(GC_ObjectScanner::isHeapScan(flags) ^ GC_ObjectScanner::isRootScan(flags));
 		GC_ObjectScanner *objectScanner = NULL;
 
 		switch(_objectModel->getScanType(objectptr)) {
 		case GC_ObjectModel::SCAN_MIXED_OBJECT:
+			objectScanner = GC_MixedObjectScanner::newInstance(_env, objectptr, objectScannerState, flags);
+			break;
 		case GC_ObjectModel::SCAN_MIXED_OBJECT_LINKED:
-			if (1 < (uintptr_t)clazz->instanceDescription) {
-				objectScanner = GC_MixedObjectScanner::newInstance(_env, objectptr, objectScannerState, flags);
-			}
+			objectScanner = GC_LinkedObjectScanner::newInstance(_env, objectptr, objectScannerState, flags);
 			break;
 		case GC_ObjectModel::SCAN_ATOMIC_MARKABLE_REFERENCE_OBJECT:
 		case GC_ObjectModel::SCAN_CLASS_OBJECT:
