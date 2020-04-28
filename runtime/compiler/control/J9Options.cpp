@@ -2082,6 +2082,8 @@ J9::Options::setupJITServerOptions()
       self()->setOption(TR_DisableEDO); // JITServer limitation, EDO counters are not relocatable yet
       self()->setOption(TR_DisableMethodIsCold); // Shady heuristic; better to disable to reduce client/server traffic
       self()->setOption(TR_DisableDecimalFormatPeephole);// JITServer decimalFormatPeephole,
+      self()->setOption(TR_DisableJProfilerThread);
+      self()->setOption(TR_EnableJProfiling, false);
 
       if (compInfo->getPersistentInfo()->getRemoteCompilationMode() == JITServer::SERVER)
          {
@@ -2633,13 +2635,6 @@ bool J9::Options::feLatePostProcess(void * base, TR::OptionSet * optionSet)
    // OpenJ9 issue #6538 tracks the work to enable.
    //
    self()->setOption(TR_DisableEDO);
-
-   // Full support for GRA is not available on AArch64 yet, mainly to
-   // work out all the subtleties with GlRegDeps.
-   //
-   // OpenJ9 issue #6606 tracks the work to enable.
-   //
-   self()->setDisabled(OMR::tacticalGlobalRegisterAllocator, true);
 
    // Support for shuffling linkage registers to GRA registers is not
    // available on AArch64 yet.

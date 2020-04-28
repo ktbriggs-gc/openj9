@@ -628,12 +628,17 @@ done:
 	 *
 	 * @param currentThread[in] the current J9VMThread
 	 * @param exception[in] the Throwable instance
+	 * @param reportException[in] (default true) if true, set the exception report bit, else clear it
 	 */
 	static VMINLINE void
-	setExceptionPending(J9VMThread *currentThread, j9object_t exception)
+	setExceptionPending(J9VMThread *currentThread, j9object_t exception, bool reportException = true)
 	{
 		currentThread->currentException = exception;
-		currentThread->privateFlags |= J9_PRIVATE_FLAGS_REPORT_EXCEPTION_THROW;
+		if (reportException) {
+			currentThread->privateFlags |= J9_PRIVATE_FLAGS_REPORT_EXCEPTION_THROW;
+		} else {
+			currentThread->privateFlags &= ~(UDATA)J9_PRIVATE_FLAGS_REPORT_EXCEPTION_THROW;
+		}
 	}
 
 	/**
@@ -766,7 +771,7 @@ done:
 #if defined(J9VM_OPT_VALHALLA_VALUE_TYPES)
 		if (J9_IS_J9CLASS_FLATTENED(arrayClass)) {
 			instance = objectAllocate->inlineAllocateIndexableValueTypeObject(currentThread, arrayClass, size, initializeSlots, memoryBarrier, sizeCheck);
-		} else
+		} else if (J9_ARE_NO_BITS_SET(arrayClass->classFlags, J9ClassContainsUnflattenedFlattenables))
 #endif /* J9VM_OPT_VALHALLA_VALUE_TYPES */
 		{
 			instance = objectAllocate->inlineAllocateIndexableObject(currentThread, arrayClass, size, initializeSlots, memoryBarrier, sizeCheck);
