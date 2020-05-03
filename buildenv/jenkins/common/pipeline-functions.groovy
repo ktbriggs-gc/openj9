@@ -220,7 +220,7 @@ def build(BUILD_JOB_NAME, OPENJDK_REPO, OPENJDK_BRANCH, OPENJDK_SHA, OPENJ9_REPO
     }
 }
 
-def test(JOB_NAME, UPSTREAM_JOB_NAME, UPSTREAM_JOB_NUMBER, NODE, OPENJ9_REPO, OPENJ9_BRANCH, OPENJ9_SHA, VENDOR_TEST_REPOS, VENDOR_TEST_BRANCHES, VENDOR_TEST_SHAS, VENDOR_TEST_DIRS, USER_CREDENTIALS_ID, CUSTOMIZED_SDK_URL, ARTIFACTORY_CREDS, TEST_FLAG, BUILD_IDENTIFIER, ghprbGhRepository, ghprbActualCommit, GITHUB_SERVER, ADOPTOPENJDK_REPO, ADOPTOPENJDK_BRANCH, IS_PARALLEL, extraTestLabels, keepReportDir, buildList) {
+def test(JOB_NAME, UPSTREAM_JOB_NAME, UPSTREAM_JOB_NUMBER, NODE, OPENJ9_REPO, OPENJ9_BRANCH, OPENJ9_SHA, VENDOR_TEST_REPOS, VENDOR_TEST_BRANCHES, VENDOR_TEST_SHAS, VENDOR_TEST_DIRS, USER_CREDENTIALS_ID, CUSTOMIZED_SDK_URL, ARTIFACTORY_CREDS, TEST_FLAG, BUILD_IDENTIFIER, ghprbGhRepository, ghprbActualCommit, GITHUB_SERVER, ADOPTOPENJDK_REPO, ADOPTOPENJDK_BRANCH, PARALLEL, extraTestLabels, keepReportDir, buildList) {
     stage ("${JOB_NAME}") {
         def testParams = []
         testParams.addAll([string(name: 'LABEL', value: NODE),
@@ -238,7 +238,7 @@ def test(JOB_NAME, UPSTREAM_JOB_NAME, UPSTREAM_JOB_NUMBER, NODE, OPENJ9_REPO, OP
             string(name: 'TEST_FLAG', value: TEST_FLAG),
             string(name: 'KEEP_REPORTDIR', value: keepReportDir),
             string(name: 'BUILD_IDENTIFIER', value: BUILD_IDENTIFIER),
-            booleanParam(name: 'IS_PARALLEL', value: IS_PARALLEL)])
+            string(name: 'PARALLEL', value: PARALLEL)])
         if (ARTIFACTORY_CREDS) {
             testParams.addAll([string(name: 'CUSTOMIZED_SDK_URL', value: CUSTOMIZED_SDK_URL),
                 string(name: 'CUSTOMIZED_SDK_URL_CREDENTIAL_ID', value: ARTIFACTORY_CREDS)])
@@ -420,9 +420,9 @@ def workflow(SDK_VERSION, SPEC, SHAS, OPENJDK_REPO, OPENJDK_BRANCH, OPENJ9_REPO,
 
             def testJobName = get_test_job_name(id, SPEC, SDK_VERSION, BUILD_IDENTIFIER)
 
-            def IS_PARALLEL = false
+            def PARALLEL = "None"
             if (testJobName.contains("special.system")) {
-                IS_PARALLEL = true
+                PARALLEL = "Subdir"
             }
             testJobs[id] = {
                 if (params.ghprbPullId) {
@@ -431,7 +431,7 @@ def workflow(SDK_VERSION, SPEC, SHAS, OPENJDK_REPO, OPENJDK_BRANCH, OPENJ9_REPO,
                 if (ARTIFACTORY_CREDS) {
                     cleanup_artifactory(ARTIFACTORY_MANUAL_CLEANUP, testJobName, ARTIFACTORY_SERVER, ARTIFACTORY_REPO, ARTIFACTORY_NUM_ARTIFACTS)
                 }
-                jobs[id] = test(testJobName, BUILD_JOB_NAME, jobs["build"].getNumber(), TEST_NODE, OPENJ9_REPO, OPENJ9_BRANCH, SHAS['OPENJ9'], VENDOR_TEST_REPOS, VENDOR_TEST_BRANCHES, VENDOR_TEST_SHAS, VENDOR_TEST_DIRS, USER_CREDENTIALS_ID, CUSTOMIZED_SDK_URL, ARTIFACTORY_CREDS, testFlag, BUILD_IDENTIFIER, ghprbGhRepository, ghprbActualCommit, GITHUB_SERVER, ADOPTOPENJDK_REPO, ADOPTOPENJDK_BRANCH, IS_PARALLEL, extraTestLabels, keepReportDir, buildList)
+                jobs[id] = test(testJobName, BUILD_JOB_NAME, jobs["build"].getNumber(), TEST_NODE, OPENJ9_REPO, OPENJ9_BRANCH, SHAS['OPENJ9'], VENDOR_TEST_REPOS, VENDOR_TEST_BRANCHES, VENDOR_TEST_SHAS, VENDOR_TEST_DIRS, USER_CREDENTIALS_ID, CUSTOMIZED_SDK_URL, ARTIFACTORY_CREDS, testFlag, BUILD_IDENTIFIER, ghprbGhRepository, ghprbActualCommit, GITHUB_SERVER, ADOPTOPENJDK_REPO, ADOPTOPENJDK_BRANCH, PARALLEL, extraTestLabels, keepReportDir, buildList)
             }
         }
         if (params.AUTOMATIC_GENERATION != 'false') {
@@ -475,7 +475,8 @@ def convert_build_identifier(val) {
 /*
 * Finds the downstream builds of a build.
 * Limits the search only to the downstream builds with given names.
-* Returns a map of builds.
+* Returns a map of builds by job name, where builds is a list of builds in
+* descending order.
 */
 def get_downstream_builds(upstreamBuild, upstreamJobName, downstreamJobNames) {
     def downstreamBuilds = [:]
@@ -485,20 +486,18 @@ def get_downstream_builds(upstreamBuild, upstreamJobName, downstreamJobNames) {
     for (name in downstreamJobNames.sort()) {
         def job = Jenkins.getInstance().getItemByFullName(name)
         if (job) {
-            def builds = [:]
+            def builds = []
             //find downstream jobs
             for (build in job.getBuilds().byTimestamp(upstreamBuild.getStartTimeInMillis(), System.currentTimeMillis())) {
                 if ((build && build.getCause(hudson.model.Cause.UpstreamCause) && build.getCause(hudson.model.Cause.UpstreamCause).upstreamRun)
                     && (build.getCause(hudson.model.Cause.UpstreamCause).upstreamRun==~pattern)) {
                         // cache all builds (in case of multiple runs)
-                        builds.put(build.getNumber(), build)
+                        builds.add(build)
                 }
             }
 
-            // fetch last build
             if (!builds.isEmpty()) {
-                lastBuildId = builds.keySet().max()
-                downstreamBuilds.put(name, builds.get(lastBuildId))
+                downstreamBuilds.put(name, builds)
             }
         }
     }
@@ -798,7 +797,9 @@ def build_all() {
 */
 def add_badges(downstreamBuilds) {
     downstreamBuilds.entrySet().each { entry ->
-        def build = entry.value
+        // entry.value is a list of builds in descending order
+        // fetch the latest build
+        def build = entry.value.get(0)
 
         switch (build.getResult()) {
             case "SUCCESS":
@@ -833,9 +834,12 @@ def add_summary_badge(downstreamBuilds) {
     summaryText += "<table>"
 
     downstreamBuilds.entrySet().each { entry ->
-        def buildLink = buildFile.get_build_embedded_status_link(entry.value)
-        Job job = entry.value.getParent()
-        def blueLink = "<a href=\"${JENKINS_URL}blue/organizations/jenkins/${job.getFullName()}/detail/${entry.key}/${entry.value.getNumber()}/pipeline\">${entry.key}</a>"
+        // entry.value is a list of builds in descending order
+        // fetch latest build
+        def build = entry.value.get(0)
+        def buildLink = buildFile.get_build_embedded_status_link(build)
+        Job job = build.getParent()
+        def blueLink = "<a href=\"${JENKINS_URL}blue/organizations/jenkins/${job.getFullName()}/detail/${entry.key}/${build.getNumber()}/pipeline\">${entry.key}</a>"
         summaryText += "<tr><td>${blueLink}</td><td>${buildLink}</td></tr>"
     }
 

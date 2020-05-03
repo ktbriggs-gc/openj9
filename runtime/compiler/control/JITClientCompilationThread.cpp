@@ -512,6 +512,7 @@ handleServerMessage(JITServer::ClientStream *client, TR_J9VM *fe, JITServer::Mes
          vmInfo._floatInvokeExactThunkHelper = comp->getSymRefTab()->findOrCreateRuntimeHelper(TR_icallVMprJavaSendInvokeExactF, false, false, false)->getMethodAddress();
          vmInfo._doubleInvokeExactThunkHelper = comp->getSymRefTab()->findOrCreateRuntimeHelper(TR_icallVMprJavaSendInvokeExactD, false, false, false)->getMethodAddress();
          vmInfo._interpreterVTableOffset = TR::Compiler->vm.getInterpreterVTableOffset();
+         vmInfo._maxHeapSizeInBytes = TR::Compiler->vm.maxHeapSizeInBytes();
          vmInfo._enableGlobalLockReservation = vmThread->javaVM->enableGlobalLockReservation;
          {
             TR::VMAccessCriticalSection getVMInfo(fe);
@@ -3138,6 +3139,9 @@ remoteCompile(
    // Collect the list of unloaded classes
    std::vector<TR_OpaqueClassBlock*> unloadedClasses(compInfo->getUnloadedClassesTempList()->begin(), compInfo->getUnloadedClassesTempList()->end());
    compInfo->getUnloadedClassesTempList()->clear();
+   std::vector<TR_OpaqueClassBlock*> illegalModificationList(compInfo->getIllegalFinalFieldModificationList()->begin(),
+                                                             compInfo->getIllegalFinalFieldModificationList()->end());
+   compInfo->getIllegalFinalFieldModificationList()->clear();
    // Collect and encode the CHTable updates; this will acquire CHTable mutex
    auto table = (JITClientPersistentCHTable*)compInfo->getPersistentInfo()->getPersistentCHTable();
    std::pair<std::string, std::string> chtableUpdates = table->serializeUpdates();
@@ -3170,7 +3174,7 @@ remoteCompile(
          }
       client->buildCompileRequest(TR::comp()->getPersistentInfo()->getClientUID(), seqNo, romMethodOffset, method,
                                   clazz, *compInfoPT->getMethodBeingCompiled()->_optimizationPlan, detailsStr,
-                                  details.getType(), unloadedClasses, classInfoTuple, optionsStr, recompMethodInfoStr,
+                                  details.getType(), unloadedClasses, illegalModificationList, classInfoTuple, optionsStr, recompMethodInfoStr,
                                   chtableUpdates.first, chtableUpdates.second, useAotCompilation);
       JITServer::MessageType response;
       while(!handleServerMessage(client, compiler->fej9vm(), response));

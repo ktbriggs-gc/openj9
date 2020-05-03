@@ -205,12 +205,13 @@ char *compilationErrorNames[]={
    "compilationAOTNoSupportForAOTFailure", //51
    "compilationAOTValidateTMFailure", //52
    "compilationILGenUnsupportedValueTypeOperationFailure", //53
+   "compilationAOTRelocationRecordGenerationFailure", //54
 #if defined(J9VM_OPT_JITSERVER)
-   "compilationStreamFailure", //54
-   "compilationStreamLostMessage", // 55
-   "compilationStreamMessageTypeMismatch", // 56
-   "compilationStreamVersionIncompatible", // 57
-   "compilationStreamInterrupted", // 58
+   "compilationStreamFailure", //55
+   "compilationStreamLostMessage", // 56
+   "compilationStreamMessageTypeMismatch", // 57
+   "compilationStreamVersionIncompatible", // 58
+   "compilationStreamInterrupted", // 59
 #endif /* defined(J9VM_OPT_JITSERVER) */
    "compilationMaxError"
 };
@@ -1704,8 +1705,12 @@ onLoadInternal(
       compInfo->setUnloadedClassesTempList(new (PERSISTENT_NEW) PersistentVector<TR_OpaqueClassBlock*>(
          PersistentVector<TR_OpaqueClassBlock*>::allocator_type(TR::Compiler->persistentAllocator())));
 
+      compInfo->setIllegalFinalFieldModificationList(new (PERSISTENT_NEW) PersistentVector<TR_OpaqueClassBlock*>(
+         PersistentVector<TR_OpaqueClassBlock*>::allocator_type(TR::Compiler->persistentAllocator())));
+
       compInfo->setNewlyExtendedClasses(new (PERSISTENT_NEW) PersistentUnorderedMap<TR_OpaqueClassBlock*, uint8_t>(
          PersistentUnorderedMap<TR_OpaqueClassBlock*, uint8_t>::allocator_type(TR::Compiler->persistentAllocator())));
+
       // Try to initialize SSL
       if (JITServer::ClientStream::static_init(compInfo->getPersistentInfo()) != 0)
          return -1;

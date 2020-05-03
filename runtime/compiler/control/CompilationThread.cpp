@@ -1144,9 +1144,10 @@ TR::CompilationInfo::CompilationInfo(J9JITConfig *jitConfig) :
 #if defined(J9VM_OPT_JITSERVER)
    _clientSessionHT = NULL; // This will be set later when options are processed
    _unloadedClassesTempList = NULL;
+   _illegalFinalFieldModificationList = NULL;
+   _newlyExtendedClasses = NULL;
    _sequencingMonitor = TR::Monitor::create("JIT-SequencingMonitor");
    _compReqSeqNo = 0;
-   _newlyExtendedClasses = NULL;
    _chTableUpdateFlags = 0;
    _localGCCounter = 0;
 #endif /* defined(J9VM_OPT_JITSERVER) */
@@ -2143,6 +2144,7 @@ bool TR::CompilationInfo::shouldRetryCompilation(TR_MethodToBeCompiled *entry, T
             case compilationSymbolValidationManagerFailure:
             case compilationAOTNoSupportForAOTFailure:
             case compilationAOTValidateTMFailure:
+            case compilationAOTRelocationRecordGenerationFailure:
                // switch to JIT for these cases (we don't want to relocate again)
                entry->_doNotUseAotCodeFromSharedCache = true;
                tryCompilingAgain = true;
@@ -11095,6 +11097,10 @@ TR::CompilationInfoPerThreadBase::processException(
    catch (const J9::AOTNoSupportForAOTFailure &e)
       {
       _methodBeingCompiled->_compErrCode = compilationAOTNoSupportForAOTFailure;
+      }
+   catch (const J9::AOTRelocationRecordGenerationFailure &e)
+      {
+      _methodBeingCompiled->_compErrCode = compilationAOTRelocationRecordGenerationFailure;
       }
    catch (const J9::ClassChainPersistenceFailure &e)
       {
