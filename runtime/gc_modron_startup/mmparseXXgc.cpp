@@ -871,11 +871,6 @@ gcParseXXgcArguments(J9JavaVM *vm, char *optArg)
 				returnValue = JNI_EINVAL;
 				break;
 			}
-			if(2 < extensions->evacuatorScanOptions) {
-				j9nls_printf(PORTLIB,J9NLS_ERROR,J9NLS_GC_OPTIONS_MUST_BE_NO_GREATER_THAN, "-XXgc:recursiveScanOptions", (UDATA)2);
-				returnValue = JNI_EINVAL;
-				break;
-			}
 			continue;
 		}
 

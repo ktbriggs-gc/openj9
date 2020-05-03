@@ -34,8 +34,11 @@ class GC_LinkedObjectScanner : public GC_MixedObjectScanner
 {
 	/* Data Members */
 private:
-	const uintptr_t _fieldOffset1;
-	const uintptr_t _fieldOffset2;
+	uintptr_t _fieldOffset1;
+	uintptr_t _fieldOffset2;
+
+	uintptr_t _selfReferencingFieldSlots[2];
+	uintptr_t _selfReferencingFieldCount;
 
 protected:
 
@@ -50,10 +53,11 @@ protected:
 	 * @param objectPtr the object to be processed
 	 * @param flags Scanning context flags
 	 */
-	MMINLINE GC_LinkedObjectScanner(MM_EnvironmentBase *env, omrobjectptr_t objectPtr, uintptr_t flags)
+	GC_LinkedObjectScanner(MM_EnvironmentBase *env, omrobjectptr_t objectPtr, uintptr_t flags)
 		: GC_MixedObjectScanner(env, objectPtr, (flags | linkedObjectScanner))
 		, _fieldOffset1(J9GC_J9OBJECT_CLAZZ(objectPtr, env)->selfReferencingField1)
 		, _fieldOffset2(J9GC_J9OBJECT_CLAZZ(objectPtr, env)->selfReferencingField2)
+		, _selfReferencingFieldCount(0)
 	{
 		_typeId = __FUNCTION__;
 	}
@@ -62,10 +66,22 @@ protected:
 	 * Subclasses must call this method to set up the instance description bits and description pointer.
 	 * @param[in] env The scanning thread environment
 	 */
-	MMINLINE void
+	void
 	initialize(MM_EnvironmentBase *env, J9Class *clazzPtr)
 	{
 		GC_MixedObjectScanner::initialize(env, clazzPtr);
+
+		if (0 < _fieldOffset1) {
+			_selfReferencingFieldSlots[0] = _fieldOffset1;
+			_selfReferencingFieldCount = 1;
+		}
+
+		if (0 < _fieldOffset2) {
+			_selfReferencingFieldSlots[_selfReferencingFieldCount] = _fieldOffset2;
+			_selfReferencingFieldCount += 1;
+		}
+
+		setSelfReferencingSlotOffsets(_selfReferencingFieldSlots, _selfReferencingFieldCount);
 	}
 
 public:
@@ -77,7 +93,7 @@ public:
 	 * @param[in] flags Scanning context flags
 	 * @return Pointer to GC_MixedObjectScanner instance in allocSpace
 	 */
-	MMINLINE static GC_LinkedObjectScanner *
+	static GC_LinkedObjectScanner *
 	newInstance(MM_EnvironmentBase *env, omrobjectptr_t objectPtr, void *allocSpace, uintptr_t flags)
 	{
 		GC_LinkedObjectScanner *objectScanner = (GC_LinkedObjectScanner *)allocSpace;
@@ -86,18 +102,6 @@ public:
 		objectScanner->initialize(env, J9GC_J9OBJECT_CLAZZ(objectPtr, env));
 
 		return objectScanner;
-	}
-
-	virtual uintptr_t
-	getNextSelfReferencingSlotOffset(uintptr_t lastSelfReferencingFieldOffset)
-	{
-		if ((0 == lastSelfReferencingFieldOffset) && (0 < _fieldOffset1)) {
-			return _fieldOffset1;
-		} else if ((_fieldOffset1 == lastSelfReferencingFieldOffset) && (0 < _fieldOffset2)) {
-			return _fieldOffset2;
-		} else {
-			return 0;
-		}
 	}
 };
 
