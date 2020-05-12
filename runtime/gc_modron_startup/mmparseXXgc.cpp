@@ -848,8 +848,8 @@ gcParseXXgcArguments(J9JavaVM *vm, char *optArg)
 				returnValue = JNI_EINVAL;
 				break;
 			}
-			if(MM_EvacuatorBase::min_workspace_size > extensions->evacuatorWorkQuantumSize) {
-				j9nls_printf(PORTLIB,J9NLS_ERROR, J9NLS_GC_OPTIONS_VALUE_MUST_BE_ABOVE, "-XXgc:recursiveWorkVolumeQuantum", (UDATA)MM_EvacuatorBase::min_workspace_size - 1);
+			if(MM_EvacuatorBase::min_workspace_release > extensions->evacuatorWorkQuantumSize) {
+				j9nls_printf(PORTLIB,J9NLS_ERROR, J9NLS_GC_OPTIONS_VALUE_MUST_BE_ABOVE, "-XXgc:recursiveWorkVolumeQuantum", (UDATA)MM_EvacuatorBase::min_workspace_release - 1);
 				returnValue = JNI_EINVAL;
 				break;
 			}
