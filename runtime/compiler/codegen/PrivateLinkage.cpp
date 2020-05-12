@@ -20,17 +20,21 @@
  * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
  *******************************************************************************/
 
-#ifndef TR_JITDUMP_INCL
-#define TR_JITDUMP_INCL
+#include "codegen/CodeGenerator.hpp"
+#include "codegen/Linkage_inlines.hpp"
+#include "codegen/PrivateLinkage.hpp"
+#include "env/jittypes.h"
 
-#include "j9.h"
-#include "j9dump.h"
-#include "j9nonbuilder.h"
+intptr_t
+J9::PrivateLinkage::entryPointFromCompiledMethod()
+   {
+   uint8_t *methodEntry = cg()->getCodeStart();
+   methodEntry += J9::PrivateLinkage::LinkageInfo::get(methodEntry)->getReservedWord();
+   return reinterpret_cast<intptr_t>(methodEntry);
+   }
 
-extern J9_CFUNC UDATA
-jitDumpSignalHandler(struct J9PortLibrary *portLibrary, U_32 gpType, void *gpInfo, void *arg);
-
-extern J9_CFUNC omr_error_t
-runJitdump(char *label, J9RASdumpContext *context, J9RASdumpAgent *agent);
-
-#endif
+intptr_t
+J9::PrivateLinkage::entryPointFromInterpretedMethod()
+   {
+   return reinterpret_cast<intptr_t>(cg()->getCodeStart());
+   }

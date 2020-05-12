@@ -255,6 +255,9 @@
 #define J9_VISIBILITY_NEST_MEMBER_NOT_CLAIMED_ERROR -5
 #endif /* defined(J9VM_OPT_VALHALLA_NESTMATES) */
 
+#define J9_CATCHTYPE_VALUE_FOR_SYNTHETIC_HANDLER_4BYTES 0xFFFFFFFF
+#define J9_CATCHTYPE_VALUE_FOR_SYNTHETIC_HANDLER_2BYTES 0xFFFF
+
 typedef enum {
 	J9FlushCompQueueDataBreakpoint
 } J9JITFlushCompilationQueueReason;
@@ -283,6 +286,7 @@ struct J9MM_IterateSpaceDescriptor;
 struct J9ObjectMonitorInfo;
 struct J9Pool;
 struct J9PortLibrary;
+struct J9RASdumpAgent;
 struct J9RASdumpContext;
 struct J9RASdumpFunctions;
 struct J9ROMClass;
@@ -3752,7 +3756,7 @@ typedef struct J9JITConfig {
 	void  ( *jitReportDynamicCodeLoadEvents)(struct J9VMThread * currentThread) ;
 	UDATA  ( *jitSignalHandler)(struct J9VMThread *vmStruct, U_32 gpType, void* gpInfo) ;
 	IDATA sampleInterruptHandlerKey;
-	IDATA  ( *dumpJitInfo)(struct J9VMThread *currentThread, char *label, struct J9RASdumpContext *context) ;
+	omr_error_t ( *runJitdump)(char *label, struct J9RASdumpContext *context, struct J9RASdumpAgent *agent);
 	void*  ( *isDLTReady)(struct J9VMThread * currentThread, struct J9Method * method, UDATA bytecodeIndex) ;
 	UDATA*  ( *jitLocalSlotAddress)(struct J9VMThread * currentThread, J9StackWalkState *walkState, UDATA slot, UDATA inlineDepth) ;
 	void  ( *jitOSRPatchMethod)(struct J9VMThread * currentThread, struct J9JITExceptionTable * metaData, U_8 * pc) ;
@@ -4346,7 +4350,7 @@ typedef struct J9InternalVMFunctions {
 #if defined(J9VM_GC_DYNAMIC_CLASS_UNLOADING)
 	void  ( *cleanUpClassLoader)(struct J9VMThread *vmThread, struct J9ClassLoader* classLoader) ;
 #endif /* J9VM_GC_DYNAMIC_CLASS_UNLOADING */
-	UDATA  ( *iterateStackTrace)(struct J9VMThread * vmThread, j9object_t* exception,  UDATA  (*callback) (struct J9VMThread * vmThread, void * userData, struct J9ROMClass * romClass, struct J9ROMMethod * romMethod, J9UTF8 * fileName, UDATA lineNumber, struct J9ClassLoader* classLoader), void * userData, UDATA pruneConstructors) ;
+	UDATA  ( *iterateStackTrace)(struct J9VMThread * vmThread, j9object_t* exception,  UDATA  (*callback) (struct J9VMThread * vmThread, void * userData, struct J9ROMClass * romClass, struct J9ROMMethod * romMethod, J9UTF8 * fileName, UDATA lineNumber, struct J9ClassLoader* classLoader, struct J9Class* ramClass), void * userData, UDATA pruneConstructors) ;
 	void  ( *internalReleaseVMAccessNoMutex)(struct J9VMThread * vmThread) ;
 	struct J9HookInterface**  ( *getVMHookInterface)(struct J9JavaVM* vm) ;
 	IDATA  ( *internalAttachCurrentThread)(struct J9JavaVM * vm, struct J9VMThread ** p_env, struct J9JavaVMAttachArgs * thr_args, UDATA threadType, void * osThread) ;

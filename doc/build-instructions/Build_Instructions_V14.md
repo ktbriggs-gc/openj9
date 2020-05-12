@@ -62,30 +62,17 @@ If you want to build a binary by using a Docker container, follow these steps to
 
 1. The first thing you need to do is install Docker. You can download the free Community edition from [here](https://docs.docker.com/engine/installation/), which also contains instructions for installing Docker on your system.  You should also read the [Getting started](https://docs.docker.com/get-started/) guide to familiarise yourself with the basic Docker concepts and terminology.
 
-2. Obtain the [Linux on 64-bit x86 systems Dockerfile](https://github.com/eclipse/openj9/blob/master/buildenv/docker/jdk14/x86_64/ubuntu16/Dockerfile) to build and run a container that has all the correct software pre-requisites.
+2. Obtain the [docker build script](https://github.com/eclipse/openj9/blob/master/buildenv/mkdocker.sh) to build and run a container that has all the correct software pre-requisites.
 
-    :pencil: Dockerfiles are also available for the following Linux architectures: [Linux on 64-bit Power systems&trade;](https://github.com/eclipse/openj9/blob/master/buildenv/docker/jdk14/ppc64le/ubuntu16/Dockerfile) and [Linux on 64-bit z Systems&trade;](https://github.com/eclipse/openj9/blob/master/buildenv/docker/jdk14/s390x/ubuntu16/Dockerfile)
+Download the docker build script to your local system or copy and paste the following command:
 
-    Either download one of these Dockerfiles to your local system or copy and paste one of the following commands:
-
-  - For Linux on 64-bit x86 systems, run:
 ```
-wget https://raw.githubusercontent.com/eclipse/openj9/master/buildenv/docker/jdk14/x86_64/ubuntu16/Dockerfile
-```
-
-  - For Linux on 64-bit Power systems, run:
-```
-wget https://raw.githubusercontent.com/eclipse/openj9/master/buildenv/docker/jdk14/ppc64le/ubuntu16/Dockerfile
-```
-
-  - For Linux on 64-bit z Systems, run:
-```
-wget https://raw.githubusercontent.com/eclipse/openj9/master/buildenv/docker/jdk14/s390x/ubuntu16/Dockerfile
+wget https://raw.githubusercontent.com/eclipse/openj9/master/buildenv/docker/mkdocker.sh
 ```
 
 3. Next, run the following command to build a Docker image, called **openj9**:
 ```
-docker build -t openj9 -f Dockerfile .
+bash mkdocker.sh --tag=openj9 --dist=ubuntu --version=16.04 --build
 ```
 
 4. Start a Docker container from the **openj9** image with the following command, where `-v` maps any directory, `<host_directory>`,
@@ -100,32 +87,24 @@ Now that you have the Docker image running, you are ready to move to the next st
 
 #### Setting up your build environment without Docker
 
-If you don't want to user Docker, you can still build an **OpenJDK V14** with OpenJ9 directly on your Ubuntu system or in a Ubuntu virtual machine. Use the
-[Linux on x86 Dockerfile](https://github.com/eclipse/openj9/blob/master/buildenv/docker/jdk14/x86_64/ubuntu16/Dockerfile) like a recipe card to determine the software dependencies
-that must be installed on the system, plus a few configuration steps.
+If you don't want to user Docker, you can still build directly on your Ubuntu system or in a Ubuntu virtual machine. Use the output of the following command like a recipe card to determine the software dependencies that must be installed on the system, plus a few configuration steps.
 
-:pencil:
-Not on x86? We also have Dockerfiles for the following Linux architectures: [Linux on Power systems](https://github.com/eclipse/openj9/blob/master/buildenv/docker/jdk14/ppc64le/ubuntu16/Dockerfile) and [Linux on z Systems](https://github.com/eclipse/openj9/blob/master/buildenv/docker/jdk14/s390x/ubuntu16/Dockerfile).
+```
+bash mkdocker.sh --tag=openj9 --dist=ubuntu --version=16.04 --print
+```
 
 1. Install the list of dependencies that can be obtained with the `apt-get` command from the following section of the Dockerfile:
 ```
 apt-get update \
   && apt-get install -qq -y --no-install-recommends \
-    gcc-7 \
-    g++-7 \
-    autoconf \
-    ca-certificates \
     ...
 ```
 
-2. This build uses the same gcc and g++ compiler levels as OpenJDK, which might be
-backlevel compared with the versions you use on your system. Create links for
-the compilers with the following commands:
+2. The previous step installed g++-7 and gcc-7 packages, which might be different
+than the default version installed on your system. Export variables to set the 
+version used in the build.
 ```
-ln -s g++ /usr/bin/c++
-ln -s g++-7 /usr/bin/g++
-ln -s gcc /usr/bin/cc
-ln -s gcc-7 /usr/bin/gcc
+export CC=gcc-7 CXX=g++-7
 ```
 
 3. Download and setup **freemarker.jar** into a directory.
@@ -136,16 +115,13 @@ tar -xzf freemarker.tgz freemarker-2.3.8/lib/freemarker.jar --strip=2
 rm -f freemarker.tgz
 ```
 
-4. Download and setup the boot JDK using the latest AdoptOpenJDK v13 build.
+4. Download and setup the boot JDK using the latest AdoptOpenJDK v14 build.
 ```
 cd /<my_home_dir>
-wget -O bootjdk13.tar.gz "https://api.adoptopenjdk.net/v2/binary/releases/openjdk13?openjdk_impl=openj9&os=linux&arch=x64&release=latest&type=jdk&heap_size=normal"
-tar -xzf bootjdk13.tar.gz
-rm -f bootjdk13.tar.gz
-mv $(ls | grep -i jdk) bootjdk13
-
-export JAVA_HOME="/<my_home_dir>/bootjdk13"
-export PATH="${JAVA_HOME}/bin:${PATH}"
+wget -O bootjdk14.tar.gz "https://api.adoptopenjdk.net/v3/binary/latest/14/ga/linux/x64/jdk/openj9/normal/adoptopenjdk"
+tar -xzf bootjdk14.tar.gz
+rm -f bootjdk14.tar.gz
+mv $(ls | grep -i jdk-14) bootjdk14
 ```
 
 ### 2. Get the source
@@ -169,9 +145,11 @@ bash get_source.sh
 :penguin:
 When you have all the source files that you need, run the configure script, which detects how to build in the current build environment.
 ```
-bash configure --with-freemarker-jar=/<my_home_dir>/freemarker.jar --with-boot-jdk=<path_to_boot_JDK13>
+bash configure --with-freemarker-jar=/<my_home_dir>/freemarker.jar --with-boot-jdk=/usr/lib/jvm/adoptojdk-java-14
 ```
 :warning: You must give an absolute path to freemarker.jar
+
+:warning: The path in the example --with-boot-jdk= option is appropriate for the Docker installation. If not using the Docker environment, set the path appropriate for your setup, such as "/<my_home_dir>/bootjdk14" as setup in the previous instructions.
 
 :pencil: **Non-compressed references support:** If you require a heap size greater than 57GB, enable a noncompressedrefs build with the `--with-noncompressedrefs` option during this step.
 
@@ -191,7 +169,8 @@ Now you're ready to build **OpenJDK V14** with OpenJ9:
 ```
 make all
 ```
-:warning: If you just type `make`, rather than `make all` your build will fail, because the default `make` target is `exploded-image`. If you want to specify `make` instead of `make all`, you must add `--default-make-target=images` when you run the configure script. For more information, read this [issue](https://github.com/ibmruntimes/openj9-openjdk-jdk9/issues/34).
+:warning: If you just type `make`, rather than `make all` your build will be incomplete, because the default `make` target is `exploded-image`.
+If you want to specify `make` instead of `make all`, you must add `--default-make-target=images` when you run the configure script.
 
 A binary for the full developer kit (jdk) is built and stored in the following directory:
 
@@ -249,11 +228,11 @@ You must install the following AIX Licensed Program Products (LPPs):
 - [xlc/C++ 16](https://www.ibm.com/developerworks/downloads/r/xlcplusaix/)
 - x11.adt.ext
 
-You must also install the boot JDK: [Java13_AIX_PPC64](https://adoptopenjdk.net/releases.html?variant=openjdk13&jvmVariant=openj9#ppc64_aix).
+You must also install the boot JDK: [Java14_AIX_PPC64](https://api.adoptopenjdk.net/v3/binary/latest/14/ga/aix/ppc64/jdk/openj9/normal/adoptopenjdk).
 
 A number of RPM packages are also required. The easiest method for installing these packages is to use `yum`, because `yum` takes care of any additional dependent packages for you.
 
-Download the following file: [yum_install_aix-ppc64.txt](aix/jdk14/yum_install_aix-ppc64.txt)
+Download the following file: [yum_install_aix-ppc64.txt](../../buildenv/aix/jdk14/yum_install_aix-ppc64.txt)
 
 This file contains a list of required RPM packages that you can install by specifying the following command:
 ```
@@ -294,11 +273,11 @@ bash get_source.sh
 When you have all the source files that you need, run the configure script, which detects how to build in the current build environment.
 ```
 bash configure --with-freemarker-jar=/<my_home_dir>/freemarker.jar \
-               --with-boot-jdk=<path_to_boot_JDK13> \
+               --with-boot-jdk=<path_to_boot_JDK14> \
                --with-cups-include=<cups_include_path> \
                --disable-warnings-as-errors
 ```
-where `<my_home_dir>` is the location where you stored **freemarker.jar** and `<cups_include_path>` is the absolute path to CUPS. For example `/opt/freeware/include`.
+where `<my_home_dir>` is the location where you stored **freemarker.jar** and `<cups_include_path>` is the absolute path to CUPS. For example, `/opt/freeware/include`.
 
 :pencil: **Non-compressed references support:** If you require a heap size greater than 57GB, enable a noncompressedrefs build with the `--with-noncompressedrefs` option during this step.
 
@@ -318,7 +297,8 @@ Now you're ready to build OpenJDK with OpenJ9:
 ```
 make all
 ```
-:warning: If you just type `make`, rather than `make all` your build will fail, because the default `make` target is `exploded-image`. If you want to specify `make` instead of `make all`, you must add `--default-make-target=images` when you run the configure script. For more information, read this [issue](https://github.com/ibmruntimes/openj9-openjdk-jdk9/issues/34).
+:warning: If you just type `make`, rather than `make all` your build will be incomplete, because the default `make` target is `exploded-image`.
+If you want to specify `make` instead of `make all`, you must add `--default-make-target=images` when you run the configure script.
 
 A binary for the full developer kit (jdk) is built and stored in the following directory:
 
@@ -343,7 +323,7 @@ Here is some sample output:
 ```
 openjdk version "14-internal" 2020-03-20
 OpenJDK Runtime Environment (build 14-internal+0-adhoc.jenkins.Build-JDK14-aixppc-64cmprssptrs)
-Eclipse OpenJ9 VM (build tye-e85051733, JRE 13 AIX ppc64-64-Bit Compressed References 20209317_28 (JIT enabled, AOT enabled)
+Eclipse OpenJ9 VM (build tye-e85051733, JRE 14 AIX ppc64-64-Bit Compressed References 20209317_28 (JIT enabled, AOT enabled)
 OpenJ9   - e85051733
 OMR      - 46127623
 JCL      - 2ef6b4c54d8 based on jdk-14+30)
@@ -368,7 +348,7 @@ The following instructions guide you through the process of building a Windows *
 You must install a number of software dependencies to create a suitable build environment on your system:
 
 - [Cygwin](https://cygwin.com/install.html), which provides a Unix-style command line interface. Install all packages in the `Devel` category. In the `Archive` category, install the packages `zip` and `unzip`. In the `Utils` category, install the `cpio` package. Install any further package dependencies that are identified by the installer. More information about using Cygwin can be found [here](https://cygwin.com/docs.html).
-- [Windows JDK 13](https://adoptopenjdk.net/releases.html?variant=openjdk13#x64_win), which is used as the boot JDK.
+- [Windows JDK 14](https://api.adoptopenjdk.net/v3/binary/latest/14/ga/windows/x64/jdk/openj9/normal/adoptopenjdk), which is used as the boot JDK.
 - [Microsoft Visual Studio 2017](https://aka.ms/vs/15/release/vs_community.exe), which is the default compiler level used by OpenJDK14.
 - [Freemarker V2.3.8](https://sourceforge.net/projects/freemarker/files/freemarker/2.3.8/freemarker-2.3.8.tar.gz/download)
 - [LLVM/Clang](http://releases.llvm.org/7.0.0/LLVM-7.0.0-win64.exe)
@@ -445,7 +425,7 @@ bash get_source.sh
 When you have all the source files that you need, run the configure script, which detects how to build in the current build environment.
 ```
 bash configure --disable-warnings-as-errors \
-               --with-boot-jdk=<path_to_boot_JDK13> \
+               --with-boot-jdk=<path_to_boot_JDK14> \
                --with-freemarker-jar=/cygdrive/c/temp/freemarker.jar
 ```
 
@@ -462,6 +442,8 @@ Now you're ready to build OpenJDK with OpenJ9:
 ```
 make all
 ```
+:warning: If you just type `make`, rather than `make all` your build will be incomplete, because the default `make` target is `exploded-image`.
+If you want to specify `make` instead of `make all`, you must add `--default-make-target=images` when you run the configure script.
 
 A binary for the full developer kit (jdk) is built and stored in the following directory:
 
@@ -510,7 +492,7 @@ The following instructions guide you through the process of building a macOS **O
 You must install a number of software dependencies to create a suitable build environment on your system:
 
 - [Xcode 9.4]( https://developer.apple.com/download/more/) (requires an Apple account to log in).
-- [macOS OpenJDK 13](https://adoptopenjdk.net/archive.html?variant=openjdk13&jvmVariant=openj9), which is used as the boot JDK.
+- [macOS OpenJDK 14](https://api.adoptopenjdk.net/v3/binary/latest/14/ga/mac/x64/jdk/openj9/normal/adoptopenjdk), which is used as the boot JDK.
 
 The following dependencies can be installed by using [Homebrew](https://brew.sh/):
 
@@ -580,7 +562,7 @@ When you have all the source files that you need, run the configure script, whic
 
 ```
 bash configure --with-freemarker-jar=/<my_home_dir>/freemarker.jar \
-               --with-boot-jdk=<path_to_boot_JDK13> \
+               --with-boot-jdk=<path_to_boot_JDK14> \
                --disable-warnings-as-errors
 ```
 
@@ -597,6 +579,8 @@ Now you're ready to build OpenJDK with OpenJ9:
 ```
 make all
 ```
+:warning: If you just type `make`, rather than `make all` your build will be incomplete, because the default `make` target is `exploded-image`.
+If you want to specify `make` instead of `make all`, you must add `--default-make-target=images` when you run the configure script.
 
 Two builds of OpenJDK with Eclipse OpenJ9 are built and stored in the following directories:
 

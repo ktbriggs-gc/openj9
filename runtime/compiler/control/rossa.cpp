@@ -1738,7 +1738,7 @@ onLoadInternal(
 #endif
 
 #ifdef J9VM_RAS_DUMP_AGENTS
-   jitConfig->dumpJitInfo = dumpJitInfo;
+   jitConfig->runJitdump = runJitdump;
 #endif
 
    if (!TR::Compiler->target.cpu.isI386())
@@ -1912,6 +1912,10 @@ aboutToBootstrap(J9JavaVM * javaVM, J9JITConfig * jitConfig)
                }
             }
          }
+
+      if (TR::Options::sharedClassCache() && TR::Options::getAOTCmdLineOptions()->getOption(TR_EnableClassChainValidationCaching))
+         if (!TR_J9SharedCache::initCCVCaching())
+            return -1;
 
       if (TR::Options::getAOTCmdLineOptions()->getOption(TR_NoStoreAOT))
          {
