@@ -195,6 +195,7 @@ J9InternalVMFunctions J9InternalFunctions = {
 	cleanUpClassLoader,
 #endif /* J9VM_GC_DYNAMIC_CLASS_UNLOADING */
 	iterateStackTrace,
+	getCompleteNPEMessage,
 	internalReleaseVMAccessNoMutex,
 	getVMHookInterface,
 	internalAttachCurrentThread,
@@ -375,4 +376,5 @@ J9InternalVMFunctions J9InternalFunctions = {
 #endif /* J9VM_OPT_JITSERVER */
 	createJoinableThreadWithCategory,
 	valueTypeCapableAcmp,
+	isClassRefQtype,
 };

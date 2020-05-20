@@ -4350,7 +4350,8 @@ typedef struct J9InternalVMFunctions {
 #if defined(J9VM_GC_DYNAMIC_CLASS_UNLOADING)
 	void  ( *cleanUpClassLoader)(struct J9VMThread *vmThread, struct J9ClassLoader* classLoader) ;
 #endif /* J9VM_GC_DYNAMIC_CLASS_UNLOADING */
-	UDATA  ( *iterateStackTrace)(struct J9VMThread * vmThread, j9object_t* exception,  UDATA  (*callback) (struct J9VMThread * vmThread, void * userData, struct J9ROMClass * romClass, struct J9ROMMethod * romMethod, J9UTF8 * fileName, UDATA lineNumber, struct J9ClassLoader* classLoader, struct J9Class* ramClass), void * userData, UDATA pruneConstructors) ;
+	UDATA  ( *iterateStackTrace)(struct J9VMThread * vmThread, j9object_t* exception,  UDATA  (*callback) (struct J9VMThread * vmThread, void * userData, UDATA bytecodeOffset, struct J9ROMClass * romClass, struct J9ROMMethod * romMethod, J9UTF8 * fileName, UDATA lineNumber, struct J9ClassLoader* classLoader, struct J9Class* ramClass), void * userData, UDATA pruneConstructors) ;
+	char* ( *getCompleteNPEMessage)(struct J9VMThread *vmThread, U_8 *bcCurrentPtr, J9ROMClass *romClass, const char *npeCauseMsg) ;
 	void  ( *internalReleaseVMAccessNoMutex)(struct J9VMThread * vmThread) ;
 	struct J9HookInterface**  ( *getVMHookInterface)(struct J9JavaVM* vm) ;
 	IDATA  ( *internalAttachCurrentThread)(struct J9JavaVM * vm, struct J9VMThread ** p_env, struct J9JavaVMAttachArgs * thr_args, UDATA threadType, void * osThread) ;
@@ -4535,6 +4536,7 @@ typedef struct J9InternalVMFunctions {
 #endif /* J9VM_OPT_JITSERVER */
 	IDATA ( *createJoinableThreadWithCategory)(omrthread_t* handle, UDATA stacksize, UDATA priority, UDATA suspend, omrthread_entrypoint_t entrypoint, void* entryarg, U_32 category) ;
 	BOOLEAN ( *valueTypeCapableAcmp)(struct J9VMThread *currentThread, j9object_t lhs, j9object_t rhs) ;
+	BOOLEAN ( *isClassRefQtype)(struct J9Class *cpContextClass, U_16 cpIndex) ;
 } J9InternalVMFunctions;
 
 /* Jazz 99339: define a new structure to replace JavaVM so as to pass J9NativeLibrary to JVMTIEnv  */
