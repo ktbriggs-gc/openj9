@@ -148,7 +148,8 @@ public:
 		Debug_MM_true(GC_ObjectScanner::isHeapScan(flags) ^ GC_ObjectScanner::isRootScan(flags));
 		GC_ObjectScanner *objectScanner = NULL;
 
-		switch(_objectModel->getScanType(objectptr)) {
+		GC_ObjectModel::ScanType scanType = _objectModel->getScanType(objectptr);
+		switch(scanType) {
 		case GC_ObjectModel::SCAN_MIXED_OBJECT:
 			objectScanner = GC_MixedObjectScanner::newInstance(_env, objectptr, objectScannerState, flags);
 			break;
@@ -172,7 +173,9 @@ public:
 		case GC_ObjectModel::SCAN_PRIMITIVE_ARRAY_OBJECT:
 			break;
 		default:
-			Assert_GC_true_with_message(_env, false, "Bad scan type for object pointer %p\n", objectptr);
+			Assert_GC_true_with_message2(_env, (UDATA)0x99669966 == J9GC_J9OBJECT_CLAZZ(objectptr, _env)->eyecatcher,
+					"Bad header %p for object pointer %p\n", J9GC_J9OBJECT_CLAZZ(objectptr, _env), objectptr);
+			Assert_GC_true_with_message2(_env, false, "Bad scan type %d for object pointer %p\n", (intptr_t)scanType, objectptr);
 		}
 
 		return objectScanner;
