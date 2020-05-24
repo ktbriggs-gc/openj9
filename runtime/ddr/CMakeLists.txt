@@ -20,7 +20,10 @@
 # SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
 ################################################################################
 
+set(OMR_ENHANCED_WARNINGS OFF)
+
 j9vm_add_library(j9ddr_misc SHARED
+	OUTPUT_NAME j9ddr_misc${J9VM_VERSION_SUFFIX}
 	algorithm_versions.c
 	gcddr.cpp
 	jitflagsddr.c

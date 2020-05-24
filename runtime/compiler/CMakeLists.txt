@@ -70,15 +70,14 @@ set_property(DIRECTORY PROPERTY COMPILE_DEFINITIONS ${compile_defs})
 
 omr_add_tracegen(env/j9jit.tdf)
 
-# this is a workaround because the jit code is inconsistent about how it includes the tracegen files
-# It only really works if we put it in the source tree
+# this is a workaround because the jit code includes the tracegen header as <env/ut_j9jit.h>
 add_custom_command(
-	OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/env/ut_j9jit.h
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/env/ut_j9jit.h
 	DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/ut_j9jit.h
-	COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_BINARY_DIR}/ut_j9jit.h" "${CMAKE_CURRENT_SOURCE_DIR}/env/ut_j9jit.h"
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_BINARY_DIR}/ut_j9jit.h" "${CMAKE_CURRENT_BINARY_DIR}/env/ut_j9jit.h"
 	VERBATIM
 )
-add_custom_target(j9jit_tracegen DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/env/ut_j9jit.h)
+add_custom_target(j9jit_tracegen DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/env/ut_j9jit.h)
 
 # J9VM_OPT_JITSERVER
 if(J9VM_OPT_JITSERVER)
@@ -298,6 +297,7 @@ set(CMAKE_C_FLAGS "${J9_CFLAGS_STR}")
 
 create_omr_compiler_library(NAME j9jit
 	SHARED
+	OUTPUT_NAME j9jit${J9VM_VERSION_SUFFIX}
 	OBJECTS ${J9_FILES} ${J9JIT_FILES} ${NOT_EXFRRED}
 	DEFINES J9_PROJECT_SPECIFIC ${TARGET_DEFINES}
 	INCLUDES ${J9_INCLUDES}

@@ -4662,21 +4662,11 @@ J9::Z::TreeEvaluator::BNDCHKwithSpineCHKEvaluator(TR::Node *node, TR::CodeGenera
                             else
                                op = (cg->comp()->target().is64Bit() ? TR::InstOpCode::LGB : TR::InstOpCode::LB);
                             break;
-            case TR::Int16:  if (actualLoadOrStoreChild->getOpCode().isShort())
-                               {
-                               op = TR::InstOpCode::getLoadHalfWordOpCode();
-                               }
+            case TR::Int16:
+                            if (loadOrStoreChild->isZeroExtendedAtSource())
+                               op = (cg->comp()->target().is64Bit() ? TR::InstOpCode::LLGH : TR::InstOpCode::LLH);
                             else
-                               {
-                               if (cg->comp()->target().is64Bit())
-                                  {
-                                  op = TR::InstOpCode::LLGH;
-                                  }
-                               else
-                                  {
-                                  op = TR::InstOpCode::LLH;
-                                  }
-                               }
+                               op = (cg->comp()->target().is64Bit() ? TR::InstOpCode::LGH : TR::InstOpCode::LH);
                             break;
             case TR::Int32:
                             if (loadOrStoreChild->isZeroExtendedAtSource())
@@ -8505,34 +8495,16 @@ J9::Z::TreeEvaluator::VMnewEvaluator(TR::Node * node, TR::CodeGenerator * cg)
    //   on if turned on as a runtime option)
    // 2.The JVM has to support the call - on z/OS, Modron GC is not enabled yet and so batch tlh clearing
    //   can not be enabled yet.
-   static bool needZeroReg = !fej9->tlhHasBeenCleared();
+   bool needZeroReg = !fej9->tlhHasBeenCleared();
 
    opCode = node->getOpCodeValue();
 
    // Since calls to canInlineAllocate could result in different results during the same compilation,
    // We must be conservative and only do inline allocation if the first call (in LocalOpts.cpp) has succeeded and we have the litPoolBaseChild added.
    // Refer to defects 161084 and 87089
-   bool doInline = cg->doInlineAllocate(node);
-
-   static int count = 0;
-   doInline = doInline &&
-   performTransformation(comp, "O^O <%3d> Inlining Allocation of %s [0x%p].\n", count++, node->getOpCode().getName(), node);
-
-   if (doInline)
+   if (cg->doInlineAllocate(node)
+            && performTransformation(comp, "O^O Inlining Allocation of %s [0x%p].\n", node->getOpCode().getName(), node))
       {
-
-      static char *maxNumOfOOLOptStr = feGetEnv("TR_MaxNumOfOOLOpt");
-      if (maxNumOfOOLOptStr)
-         {
-         int maxNumOfOOLOpt = atoi(maxNumOfOOLOptStr);
-         traceMsg(cg->comp(),"TR_MaxNumOfOOLOpt: count=%d, maxNumOfOOLOpt=%d %d\n", count, maxNumOfOOLOpt, __LINE__);
-         if(maxNumOfOOLOpt < count)
-            {
-            traceMsg(cg->comp(),"TR_MaxNumOfOOLOpt: maxNumOfOOLOpt < count, Setting TR_DisableHeapAllocOOL %d\n", __LINE__);
-            comp->setOption(TR_DisableHeapAllocOOL);
-            }
-         }
-
       objectSize = comp->canAllocateInline(node, classAddress);
       isVariableLen = (objectSize == 0);
       allocateSize = objectSize;
