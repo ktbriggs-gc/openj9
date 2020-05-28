@@ -30,6 +30,7 @@
 #include "j9nonbuilder.h"
 #include "omr.h"
 
+#include "AtomicSupport.hpp"
 #include "EnvironmentStandard.hpp"
 #include "EvacuatorBase.hpp"
 #include "GCExtensionsBase.hpp"
@@ -144,7 +145,17 @@ public:
 	getObjectScanner(omrobjectptr_t objectptr, void *objectScannerState, uintptr_t flags)
 	{
 		/* object class must have proper eye catcher */
-		Debug_MM_true((UDATA)0x99669966 == J9GC_J9OBJECT_CLAZZ(objectptr, _env)->eyecatcher);
+		if ((UDATA)0x99669966 != J9GC_J9OBJECT_CLAZZ(objectptr, _env)->eyecatcher) {
+			VM_AtomicSupport::readWriteBarrier();
+#if defined(EVACUATOR_DEBUG) || defined(EVACUATOR_DEBUG_ALWAYS)
+			if ((UDATA)0x99669966 != J9GC_J9OBJECT_CLAZZ(objectptr, _env)->eyecatcher) {
+				OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
+				omrtty_printf("***[evacuator-delegate] Misread of class %p from object pointer %p\n", J9GC_J9OBJECT_CLAZZ(objectptr, _env), objectptr);
+			}
+#endif /* defined(EVACUATOR_DEBUG) || defined(EVACUATOR_DEBUG_ALWAYS) */
+			Assert_GC_true_with_message2(_env, (UDATA)0x99669966 == J9GC_J9OBJECT_CLAZZ(objectptr, _env)->eyecatcher,
+				"Bad header %p for object pointer %p\n", J9GC_J9OBJECT_CLAZZ(objectptr, _env), objectptr);
+		}
 		Debug_MM_true(GC_ObjectScanner::isHeapScan(flags) ^ GC_ObjectScanner::isRootScan(flags));
 		GC_ObjectScanner *objectScanner = NULL;
 
@@ -173,8 +184,6 @@ public:
 		case GC_ObjectModel::SCAN_PRIMITIVE_ARRAY_OBJECT:
 			break;
 		default:
-			Assert_GC_true_with_message2(_env, (UDATA)0x99669966 == J9GC_J9OBJECT_CLAZZ(objectptr, _env)->eyecatcher,
-					"Bad header %p for object pointer %p\n", J9GC_J9OBJECT_CLAZZ(objectptr, _env), objectptr);
 			Assert_GC_true_with_message2(_env, false, "Bad scan type %d for object pointer %p\n", (intptr_t)scanType, objectptr);
 		}
 
@@ -230,7 +239,7 @@ public:
 		J9Class *clazz = (J9Class *)J9GC_J9OBJECT_CLAZZ(objectptr, _env);
 		return (uintptr_t)0x99669966 == clazz->eyecatcher;
 	}
-	void debugValidateObject(omrobjectptr_t objectptr);
+	void debugValidateObject(omrobjectptr_t objectptr, uintptr_t forwardedLength);
 	void debugValidateObject(MM_ForwardedHeader *forwardedHeader);
 	const char *
 	debugGetClassname(omrobjectptr_t objectptr, char *buffer, uintptr_t bufferLength)

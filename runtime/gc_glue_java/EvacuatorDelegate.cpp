@@ -386,12 +386,20 @@ MM_EvacuatorDelegate::getReferenceObjectScanner(omrobjectptr_t objectptr, void *
 
 #if defined(EVACUATOR_DEBUG)
 void
-MM_EvacuatorDelegate::debugValidateObject(omrobjectptr_t objectptr)
+MM_EvacuatorDelegate::debugValidateObject(omrobjectptr_t objectptr, uintptr_t forwardedLength)
 {
 	J9Class *clazz = (J9Class *)J9GC_J9OBJECT_CLAZZ(objectptr, _env);
 	if ((uintptr_t)0x99669966 != clazz->eyecatcher) {
 		OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
-		omrtty_printf("%5lu %2llu %2llu:    assert; Invalid object header: object=%p; clazz=%p; *object=%p\n;", _controller->getEpoch()->gc, (uint64_t)_controller->getEpoch()->epoch, (uint64_t)_evacuator->getWorkerIndex(), objectptr, clazz, *objectptr);
+		omrtty_printf("%5lu %2llu %2llu:    assert; Invalid object header: evacuator=%p; object=%p; clazz=%p; *object=%p\n",
+				_controller->getEpoch()->gc, (uint64_t)_controller->getEpoch()->epoch, (uint64_t)_evacuator->getWorkerIndex(),
+				_evacuator, objectptr, clazz, *objectptr);
+		Debug_MM_true(false);
+	} else if (forwardedLength != _objectModel->getConsumedSizeInBytesWithHeader(objectptr)) {
+		OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
+		omrtty_printf("%5lu %2llu %2llu:    assert; Invalid object size 0x%lx != 0x%lx class instance size: evacuator=%p; object=%p; clazz=%p; *object=%p\n",
+				_controller->getEpoch()->gc, (uint64_t)_controller->getEpoch()->epoch, (uint64_t)_evacuator->getWorkerIndex(),
+				_evacuator, forwardedLength, _objectModel->getConsumedSizeInBytesWithHeader(objectptr), objectptr, clazz, *objectptr);
 		Debug_MM_true(false);
 	}
 }
@@ -402,7 +410,9 @@ MM_EvacuatorDelegate::debugValidateObject(MM_ForwardedHeader *forwardedHeader)
 	J9Class* clazz = _objectModel->getPreservedClass(forwardedHeader);
 	if ((uintptr_t)0x99669966 != clazz->eyecatcher) {
 		OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
-		omrtty_printf("%5lu %2llu %2llu:    assert; Invalid forwarded header: object=%p; clazz=%p; *object=%p; forwarded=%p\n;", _controller->getEpoch()->gc, (uint64_t)_controller->getEpoch()->epoch, (uint64_t)_evacuator->getWorkerIndex(), forwardedHeader->getObject(), clazz, *(forwardedHeader->getObject()), forwardedHeader->getForwardedObject());
+		omrtty_printf("%5lu %2llu %2llu:    assert; Invalid forwarded header: evacuator=%p; object=%p; clazz=%p; *object=%p; forwarded=%p\n",
+				_controller->getEpoch()->gc, (uint64_t)_controller->getEpoch()->epoch, (uint64_t)_evacuator->getWorkerIndex(),
+				_evacuator, forwardedHeader->getObject(), clazz, *(forwardedHeader->getObject()), forwardedHeader->getForwardedObject());
 		Debug_MM_true(false);
 	}
 }
