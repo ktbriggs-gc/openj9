@@ -48,6 +48,7 @@
 #include "z/codegen/S390Evaluator.hpp"
 #include "z/codegen/S390GenerateInstructions.hpp"
 #include "z/codegen/S390HelperCallSnippet.hpp"
+#include "z/codegen/S390J9CallSnippet.hpp"
 #include "z/codegen/S390StackCheckFailureSnippet.hpp"
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,8 +68,9 @@ J9::Z::zLinuxSystemLinkage::generateInstructionsForCall(TR::Node * callNode,
 	TR::RegisterDependencyConditions * deps, intptr_t targetAddress,
 	TR::Register * methodAddressReg, TR::Register * javaLitOffsetReg,
 	TR::LabelSymbol * returnFromJNICallLabel,
-	TR::S390JNICallDataSnippet * jniCallDataSnippet, bool isJNIGCPoint)
+	TR::Snippet * callDataSnippet, bool isJNIGCPoint)
    {
+   TR::S390JNICallDataSnippet2 * jniCallDataSnippet = static_cast<TR::S390JNICallDataSnippet2 *>(callDataSnippet);
    TR::CodeGenerator * codeGen = cg();
    TR_J9VMBase *fej9 = (TR_J9VMBase *)(codeGen->fe());
    J9::Z::PrivateLinkage * privateLinkage = static_cast<J9::Z::PrivateLinkage *>(cg()->getLinkage(TR_Private));

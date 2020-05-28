@@ -1,5 +1,6 @@
+/*[INCLUDE-IF Sidecar18-SE]*/
 /*******************************************************************************
- * Copyright (c) 2005, 2018 IBM Corp. and others
+ * Copyright (c) 2020, 2020 IBM Corp. and others
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -19,17 +20,9 @@
  *
  * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
  *******************************************************************************/
-package CustomClassloaders;
-
-import java.security.CodeSource;
-import java.util.jar.Manifest;
 
 /**
- * @author Matthew Kilner
+ * The OpenJ9 shared classes API, a persistent share which can contain classes, precompiled code (AOT),
+ * JIT data, and other data used to improve start up performance and reduce memory footprint. 
  */
-public class CustomLoaderMetaDataCache {
-
-	CodeSource codeSource;
-
-	Manifest manifest;
-}
+package com.ibm.oti.shared;

@@ -20,11 +20,11 @@
 # SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
 ################################################################################
 
-j9vm_add_library(bcuwhite_test SHARED
+j9vm_add_library(bcuwhite SHARED
 	bcunatives.c
 )
 
-target_link_libraries(bcuwhite_test
+target_link_libraries(bcuwhite
 	PRIVATE
 		j9vm_interface
 
@@ -45,4 +45,6 @@ target_link_libraries(bcuwhite_test
 		j9bcv
 )
 
-omr_add_exports(bcuwhite_test Java_com_ibm_j9_test_bcutil_TestNatives_verifyCanonisizeAndCopyUTF8)
+omr_add_exports(bcuwhite
+	Java_com_ibm_j9_test_bcutil_TestNatives_verifyCanonisizeAndCopyUTF8
+)

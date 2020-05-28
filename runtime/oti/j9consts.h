@@ -528,6 +528,7 @@ extern "C" {
 #define BCV_ERR_BAD_BYTECODE							-31
 #define BCV_ERR_UNEXPECTED_EOF							-32
 #define BCV_ERR_INACCESSIBLE_CLASS						-33
+#define BCV_ERR_BYTECODE_ERROR							-34
 
 #define J9_GC_OBJ_HEAP_HOLE 0x1
 #define J9_GC_MULTI_SLOT_HOLE 0x1
@@ -579,6 +580,7 @@ extern "C" {
 #define J9_JCL_FLAG_JDK_MODULE_PATCH_PROP	0x40
 
 #define J9_SIG_NO_SIG_QUIT 0x1
+#define J9_SIG_NO_SIG_ABRT 0x2
 #define J9_SIG_NO_SIG_CHAIN 0x4
 #define J9_SIG_NO_SIG_INT 0x8
 #define J9_SIG_XRS_SYNC 0x10
