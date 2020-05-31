@@ -144,21 +144,12 @@ public:
 	GC_ObjectScanner *
 	getObjectScanner(omrobjectptr_t objectptr, void *objectScannerState, uintptr_t flags)
 	{
-		/* object class must have proper eye catcher */
-		if ((UDATA)0x99669966 != J9GC_J9OBJECT_CLAZZ(objectptr, _env)->eyecatcher) {
-			VM_AtomicSupport::readWriteBarrier();
-#if defined(EVACUATOR_DEBUG) || defined(EVACUATOR_DEBUG_ALWAYS)
-			if ((UDATA)0x99669966 != J9GC_J9OBJECT_CLAZZ(objectptr, _env)->eyecatcher) {
-				OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
-				omrtty_printf("***[evacuator-delegate] Misread of class %p from object pointer %p\n", J9GC_J9OBJECT_CLAZZ(objectptr, _env), objectptr);
-			}
-#endif /* defined(EVACUATOR_DEBUG) || defined(EVACUATOR_DEBUG_ALWAYS) */
-			Assert_GC_true_with_message2(_env, (UDATA)0x99669966 == J9GC_J9OBJECT_CLAZZ(objectptr, _env)->eyecatcher,
-				"Bad header %p for object pointer %p\n", J9GC_J9OBJECT_CLAZZ(objectptr, _env), objectptr);
-		}
 		Debug_MM_true(GC_ObjectScanner::isHeapScan(flags) ^ GC_ObjectScanner::isRootScan(flags));
-		GC_ObjectScanner *objectScanner = NULL;
+		/* object class must have proper eye catcher */
+		Assert_GC_true_with_message2(_env, (UDATA)0x99669966 == J9GC_J9OBJECT_CLAZZ(objectptr, _env)->eyecatcher,
+			"Bad header %p for object pointer %p\n", J9GC_J9OBJECT_CLAZZ(objectptr, _env), objectptr);
 
+		GC_ObjectScanner *objectScanner = NULL;
 		GC_ObjectModel::ScanType scanType = _objectModel->getScanType(objectptr);
 		switch(scanType) {
 		case GC_ObjectModel::SCAN_MIXED_OBJECT:
