@@ -495,7 +495,7 @@ TR_J9ByteCodeIlGenerator::genILFromByteCodes()
    TR::TreeTop *currTree = _methodSymbol->getFirstTreeTop()->getNextTreeTop();
 
    List<TR::SymbolReference> autoOrParmSymRefList(comp()->trMemory());
-   TR_ScratchList<TR::TreeTop> unresolvedCheckcastTops(comp()->trMemory());
+   TR_ScratchList<TR::TreeTop> unresolvedCheckcastTopsNeedingNullGuard(comp()->trMemory());
    TR_ScratchList<TR::TreeTop> unresolvedInstanceofTops(comp()->trMemory());
    TR_ScratchList<TR::TreeTop> invokeSpecialInterfaceTops(comp()->trMemory());
    TR::NodeChecklist evaluatedInvokeSpecialCalls(comp());
@@ -564,9 +564,12 @@ TR_J9ByteCodeIlGenerator::genILFromByteCodes()
 
       if (currNode->getOpCodeValue() == TR::checkcast
           && currNode->getSecondChild()->getOpCodeValue() == TR::loadaddr
-          && currNode->getSecondChild()->getSymbolReference()->isUnresolved())
+          && currNode->getSecondChild()->getSymbolReference()->isUnresolved()
+          && // check whether the checkcast class is valuetype. Expansion is only needed for checkcast to reference type.
+            (!TR::Compiler->om.areValueTypesEnabled()
+            || !TR::Compiler->cls.isClassRefValueType(comp(), method()->classOfMethod(), currNode->getSecondChild()->getSymbolReference()->getCPIndex())))
           {
-          unresolvedCheckcastTops.add(currTree);
+          unresolvedCheckcastTopsNeedingNullGuard.add(currTree);
           }
       else if (currNode->getOpCodeValue() == TR::treetop
                && currNode->getFirstChild()->getOpCodeValue() == TR::instanceof
@@ -738,7 +741,7 @@ TR_J9ByteCodeIlGenerator::genILFromByteCodes()
       }
 
       {
-      ListIterator<TR::TreeTop> it(&unresolvedCheckcastTops);
+      ListIterator<TR::TreeTop> it(&unresolvedCheckcastTopsNeedingNullGuard);
       for (TR::TreeTop *tree = it.getCurrent(); tree != NULL; tree = it.getNext())
          expandUnresolvedClassCheckcast(tree);
       }
@@ -1365,7 +1368,7 @@ TR_J9ByteCodeIlGenerator::genDFPGetHWAvailable()
 
       bool is390DFP =
 #ifdef TR_TARGET_S390
-         comp()->target().cpu.isZ() && comp()->target().cpu.getSupportsDecimalFloatingPointFacility();
+         comp()->target().cpu.isZ() && comp()->target().cpu.supportsFeature(OMR_FEATURE_S390_DFP);
 #else
          false;
 #endif

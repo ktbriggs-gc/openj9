@@ -252,6 +252,11 @@ static intptr_t getAIXPPCDescription(struct J9PortLibrary *portLibrary, J9Proces
 #endif /* defined(J9OS_I5) && !defined(J9OS_I5_V6R1) */
 #endif /* !defined(__power_9) */
 
+#if !defined(__power_10)
+#define POWER_10 0x40000 /* Power 10 class CPU */
+#define __power_10() (_system_configuration.implementation == POWER_10)
+#endif /* !defined(__power_10) */
+
 #if defined(J9OS_I5_V6R1) /* vmx_version id only available since TL4 */
 #define __power_vsx() (_system_configuration.vmx_version > 1)
 #endif
@@ -566,6 +571,8 @@ mapPPCProcessor(const char *processorName)
 		rc = PROCESSOR_PPC_P8;
 	} else if (0 == strncasecmp(processorName, "power9", 6)) {
 		rc = PROCESSOR_PPC_P9;
+	} else if (0 == strncasecmp(processorName, "power10", 7)) {
+                rc = PROCESSOR_PPC_P10;
 	}
 
 	return rc;
@@ -617,6 +624,8 @@ getAIXPPCDescription(struct J9PortLibrary *portLibrary, J9ProcessorDesc *desc)
 		desc->processor = PROCESSOR_PPC_P8;
 	} else if (__power_9()) {
 		desc->processor = PROCESSOR_PPC_P9;
+	} else if (__power_10()) {
+                desc->processor = PROCESSOR_PPC_P10;
 	} else {
 		desc->processor = PROCESSOR_PPC_UNKNOWN;
 	}
@@ -1710,6 +1719,17 @@ j9sysinfo_get_cache_info(struct J9PortLibrary *portLibrary, const J9CacheInfoQue
 	case J9PORT_CACHEINFO_QUERY_LINESIZE:
 	case J9PORT_CACHEINFO_QUERY_CACHESIZE:
 		result =  getCacheSize(portLibrary, query->cpu, query->level, query->cacheType, query->cmd);
+
+#if defined(RISCV64)
+	/* The L1 data cache at "cache/index1" is set up from "/sys/devices/system/cpu/cpu1" on some Linux distro
+	 * (e.g. Debian_riscv) rather than "/sys/devices/system/cpu/cpu0" in which "cache/index1" doesn't exist.
+	 * Note: this is a temporary solution specific to Debian_riscv which won't be used or simply
+	 * removed once we confirm "cpu0/cache/index1" does exist on the latest version of Debian_riscv.
+	 */
+	if (result < 0) {
+		result =  getCacheSize(portLibrary, query->cpu + 1, query->level, query->cacheType, query->cmd);
+	}
+#endif /* defined(RISCV64) */
 		break;
 	case J9PORT_CACHEINFO_QUERY_TYPES:
 		result =  getCacheTypes(portLibrary, query->cpu, query->level);

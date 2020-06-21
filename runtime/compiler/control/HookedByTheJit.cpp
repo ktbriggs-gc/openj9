@@ -424,7 +424,7 @@ static void jitHookInitializeSendTarget(J9HookInterface * * hook, UDATA eventNum
    if (!optionsJIT->getOption(TR_DisableDFP) && !optionsAOT->getOption(TR_DisableDFP)
        && (TR::Compiler->target.cpu.supportsDecimalFloatingPoint()
 #ifdef TR_TARGET_S390
-       || TR::Compiler->target.cpu.getSupportsDecimalFloatingPointFacility()
+       || TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_DFP)
 #endif
        )
        && TR_J9MethodBase::isBigDecimalMethod(method)
@@ -1985,9 +1985,9 @@ static void jitHookAnonClassesUnload(J9HookInterface * * hookInterface, UDATA ev
    J9JITConfig *jitConfig = vmThread->javaVM->jitConfig;
    TR::CompilationInfo * compInfo = TR::CompilationInfo::get(jitConfig);
 #if defined(J9VM_JIT_DYNAMIC_LOOP_TRANSFER)
-   compInfo->cleanDLTRecordOnUnload(&dummyClassLoader);
+   compInfo->cleanDLTRecordOnUnload();
    if (compInfo->getDLT_HT())
-      compInfo->getDLT_HT()->onClassUnloading(&dummyClassLoader);
+      compInfo->getDLT_HT()->onClassUnloading();
 #endif
 
    compInfo->getLowPriorityCompQueue().purgeEntriesOnClassLoaderUnloading(&dummyClassLoader);
@@ -2152,11 +2152,6 @@ static void jitHookClassLoaderUnload(J9HookInterface * * hookInterface, UDATA ev
    // CodeGen-specific actions on class unloading
    cgOnClassUnloading(classLoader);
 
-#if defined(J9VM_JIT_DYNAMIC_LOOP_TRANSFER)
-   compInfo->cleanDLTRecordOnUnload(classLoader);
-   if (compInfo->getDLT_HT())
-      compInfo->getDLT_HT()->onClassUnloading(classLoader);
-#endif
    compInfo->getLowPriorityCompQueue().purgeEntriesOnClassLoaderUnloading(classLoader);
 
 #if defined(J9VM_INTERP_PROFILING_BYTECODES)
@@ -2179,6 +2174,19 @@ static void jitHookClassLoaderUnload(J9HookInterface * * hookInterface, UDATA ev
    }
 
 #endif /* defined (J9VM_GC_DYNAMIC_CLASS_UNLOADING)*/
+
+#if defined(J9VM_GC_DYNAMIC_CLASS_UNLOADING) && defined(J9VM_JIT_DYNAMIC_LOOP_TRANSFER)
+static void jitHookClassLoadersUnload(J9HookInterface * * hookInterface, UDATA eventNum, void * eventData, void * userData)
+   {
+   J9VMClassUnloadEvent * unloadedEvent = (J9VMClassUnloadEvent *)eventData;
+   J9VMThread * vmThread = unloadedEvent->currentThread;
+   J9JITConfig * jitConfig = vmThread->javaVM->jitConfig;
+   TR::CompilationInfo * compInfo = TR::CompilationInfo::get(jitConfig);
+   compInfo->cleanDLTRecordOnUnload();
+   if (compInfo->getDLT_HT())
+      compInfo->getDLT_HT()->onClassUnloading();
+   }
+#endif /* defined (J9VM_GC_DYNAMIC_CLASS_UNLOADING) and defined (J9VM_JIT_DYNAMIC_LOOP_TRANSFER) */
 
 void jitDiscardPendingCompilationsOfNatives(J9VMThread *vmThread, J9Class *clazz)
    {
@@ -4156,8 +4164,8 @@ void JitShutdown(J9JITConfig * jitConfig)
 
 #if defined(J9VM_OPT_JITSERVER)
    static char * isPrintJITServerMsgStats = feGetEnv("TR_PrintJITServerMsgStats");
-   if (isPrintJITServerMsgStats && compInfo->getPersistentInfo()->getRemoteCompilationMode() == JITServer::CLIENT)
-      JITServerHelpers::printJITServerMsgStats(jitConfig);
+   if (isPrintJITServerMsgStats)
+      JITServerHelpers::printJITServerMsgStats(jitConfig, compInfo);
    static char * isPrintJITServerCHTableStats = feGetEnv("TR_PrintJITServerCHTableStats");
    if (isPrintJITServerCHTableStats)
       JITServerHelpers::printJITServerCHTableStats(jitConfig, compInfo);
@@ -6539,6 +6547,9 @@ int32_t setUpHooks(J9JavaVM * javaVM, J9JITConfig * jitConfig, TR_FrontEnd * vm)
            (*vmHooks)->J9HookRegisterWithCallSite(vmHooks, J9HOOK_VM_CLASSES_UNLOAD, jitHookClassesUnload, OMR_GET_CALLSITE(), NULL) ||
            (*vmHooks)->J9HookRegisterWithCallSite(vmHooks, J9HOOK_VM_CLASS_LOADER_UNLOAD, jitHookClassLoaderUnload, OMR_GET_CALLSITE(), NULL) ||
            (*vmHooks)->J9HookRegisterWithCallSite(vmHooks, J9HOOK_VM_ANON_CLASSES_UNLOAD, jitHookAnonClassesUnload, OMR_GET_CALLSITE(), NULL) ||
+#if defined(J9VM_JIT_DYNAMIC_LOOP_TRANSFER)
+           (*vmHooks)->J9HookRegisterWithCallSite(vmHooks, J9HOOK_VM_CLASS_LOADERS_UNLOAD, jitHookClassLoadersUnload, OMR_GET_CALLSITE(), NULL) ||
+#endif
            (*gcHooks)->J9HookRegisterWithCallSite(gcHooks, J9HOOK_MM_INTERRUPT_COMPILATION, jitHookInterruptCompilation, OMR_GET_CALLSITE(), NULL) ||
            (*gcHooks)->J9HookRegisterWithCallSite(gcHooks, J9HOOK_MM_CLASS_UNLOADING_END, jitHookClassesUnloadEnd, OMR_GET_CALLSITE(), NULL))
          {

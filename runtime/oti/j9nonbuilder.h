@@ -538,9 +538,10 @@ typedef struct J9JITExceptionTable {
 	void* riData;
 } J9JITExceptionTable;
 
-#define JIT_METADATA_FLAGS_USED_FOR_SIZE 1
-#define JIT_METADATA_GC_MAP_32_BIT_OFFSETS 2
-#define JIT_METADATA_IS_STUB 4
+#define JIT_METADATA_FLAGS_USED_FOR_SIZE 0x1
+#define JIT_METADATA_GC_MAP_32_BIT_OFFSETS 0x2
+#define JIT_METADATA_IS_STUB 0x4
+#define JIT_METADATA_NOT_INITIALIZED 0x8
 
 typedef struct J9JIT16BitExceptionTableEntry {
 	U_16 startPC;
@@ -865,6 +866,12 @@ typedef struct J9CudaGlobals {
 } J9CudaGlobals;
 
 #if defined(J9VM_OPT_SHARED_CLASSES)
+
+typedef enum J9SharedClassCacheMode {
+	J9SharedClassCacheBootstrapOnly,
+	J9SharedClassCacheBoostrapAndExtension,
+	J9SharedClassCacheUserDefined
+} J9SharedClassCacheMode;
 
 typedef struct J9SharedClassTransaction {
 	struct J9VMThread* ownerThread;
@@ -1226,6 +1233,7 @@ typedef struct J9SharedClassConfig {
 	const char* ctrlDirName;
 	UDATA  ( *getCacheSizeBytes)(struct J9JavaVM* vm) ;
 	UDATA  ( *getTotalUsableCacheBytes)(struct J9JavaVM* vm);
+	J9SharedClassCacheMode ( *getSharedClassCacheMode)(struct J9JavaVM* vm);
 	void  ( *getMinMaxBytes)(struct J9JavaVM* vm, U_32 *softmx, I_32 *minAOT, I_32 *maxAOT, I_32 *minJIT, I_32 *maxJIT);
 	I_32  ( *setMinMaxBytes)(struct J9JavaVM* vm, U_32 softmx, I_32 minAOT, I_32 maxAOT, I_32 minJIT, I_32 maxJIT);
 	void (* increaseUnstoredBytes)(struct J9JavaVM *vm, U_32 aotBytes, U_32 jitBytes);
@@ -2769,7 +2777,7 @@ typedef struct J9GCThreadInfo {
 
 typedef struct J9ModronThreadLocalHeap {
 	U_8* heapBase;
-	U_8* realHeapAlloc;
+	U_8* realHeapTop;
 	UDATA objectFlags;
 	UDATA refreshSize;
 	void* memorySubSpace;
@@ -3592,6 +3600,13 @@ typedef struct J9JITConfig {
 	void *old_slow_jitNewInstanceImplAccessCheck;
 	void *old_slow_jitTranslateNewInstanceMethod;
 	void *old_slow_jitReportFinalFieldModified;
+	void *old_fast_jitGetFlattenableField;
+	void *old_fast_jitWithFlattenableField;
+	void *old_fast_jitPutFlattenableField;
+	void *old_fast_jitGetFlattenableStaticField;
+	void *old_fast_jitPutFlattenableStaticField;
+	void *old_fast_jitLoadFlattenableArrayElement;
+	void *old_fast_jitStoreFlattenableArrayElement;
 	void *old_fast_jitAcmpHelper;
 	void *fast_jitNewValue;
 	void *fast_jitNewValueNoZeroInit;

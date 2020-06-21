@@ -28,6 +28,7 @@
 #include <ctype.h>
 #include <string.h>
 #include "control/Options.hpp"
+#include "control/CompilationRuntime.hpp"
 #include "env/CompilerEnv.hpp"
 #include "env/CPU.hpp"
 #include "infra/Assert.hpp"
@@ -43,14 +44,86 @@
 
 extern J9JITConfig * jitConfig;
 
-namespace J9
-{
+void
+J9::Z::CPU::applyUserOptions()
+   {
+   OMRPORT_ACCESS_FROM_OMRPORT(TR::Compiler->omrPortLib);
 
-namespace Z
-{
+   if (_processorDescription.processor >= OMR_PROCESSOR_S390_Z10 && TR::Options::getCmdLineOptions()->getOption(TR_DisableZ10))
+      _processorDescription.processor = OMR_PROCESSOR_S390_FIRST;
+   else if (_processorDescription.processor >= OMR_PROCESSOR_S390_Z196 && TR::Options::getCmdLineOptions()->getOption(TR_DisableZ196))
+      _processorDescription.processor = OMR_PROCESSOR_S390_Z10;
+   else if (_processorDescription.processor >= OMR_PROCESSOR_S390_ZEC12 && TR::Options::getCmdLineOptions()->getOption(TR_DisableZEC12))
+      _processorDescription.processor = OMR_PROCESSOR_S390_Z196;
+   else if (_processorDescription.processor >= OMR_PROCESSOR_S390_Z13 && TR::Options::getCmdLineOptions()->getOption(TR_DisableZ13))
+      _processorDescription.processor = OMR_PROCESSOR_S390_ZEC12;
+   else if (_processorDescription.processor >= OMR_PROCESSOR_S390_Z14 && TR::Options::getCmdLineOptions()->getOption(TR_DisableZ14))
+      _processorDescription.processor = OMR_PROCESSOR_S390_Z13;
+   else if (_processorDescription.processor >= OMR_PROCESSOR_S390_Z15 && TR::Options::getCmdLineOptions()->getOption(TR_DisableZ15))
+      _processorDescription.processor = OMR_PROCESSOR_S390_Z14;
+   else if (_processorDescription.processor >= OMR_PROCESSOR_S390_ZNEXT && TR::Options::getCmdLineOptions()->getOption(TR_DisableZNext))
+      _processorDescription.processor = OMR_PROCESSOR_S390_Z15;
+
+   if (_processorDescription.processor < OMR_PROCESSOR_S390_Z10)
+      {
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_DFP, FALSE);
+      }
+
+   if (_processorDescription.processor < OMR_PROCESSOR_S390_Z196)
+      {
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_HIGH_WORD, FALSE);
+      }
+
+   if (_processorDescription.processor < OMR_PROCESSOR_S390_ZEC12)
+      {
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_TE, FALSE);
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_RI, FALSE);
+      }
+
+   if (_processorDescription.processor < OMR_PROCESSOR_S390_Z13)
+      {
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_VECTOR_FACILITY, FALSE);
+      }
+
+   if (_processorDescription.processor < OMR_PROCESSOR_S390_Z14)
+      {
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_MISCELLANEOUS_INSTRUCTION_EXTENSION_2, FALSE);
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_VECTOR_PACKED_DECIMAL, FALSE);
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_VECTOR_FACILITY_ENHANCEMENT_1, FALSE);
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_GUARDED_STORAGE, FALSE);
+      }
+
+   if (_processorDescription.processor < OMR_PROCESSOR_S390_Z15)
+      {
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_MISCELLANEOUS_INSTRUCTION_EXTENSION_3, FALSE);
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_VECTOR_FACILITY_ENHANCEMENT_2, FALSE);
+      omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_VECTOR_PACKED_DECIMAL_ENHANCEMENT_FACILITY, FALSE);
+      }
+
+   // This variable is used internally by the j9sysinfo macros below and cannot be folded away
+   J9PortLibrary* privatePortLibrary = TR::Compiler->portLib;
+
+#if defined(LINUX)
+   if (TRUE == omrsysinfo_processor_has_feature(&_processorDescription, OMR_FEATURE_S390_RI))
+      {
+      if (0 != j9ri_enableRISupport())
+         {
+         omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_RI, FALSE);
+         }
+      }
+#endif
+
+   if (TRUE == omrsysinfo_processor_has_feature(&_processorDescription, OMR_FEATURE_S390_GUARDED_STORAGE))
+      {
+      if (TR::Compiler->javaVM->memoryManagerFunctions->j9gc_software_read_barrier_enabled(TR::Compiler->javaVM))
+         {
+         omrsysinfo_processor_set_feature(&_processorDescription, OMR_FEATURE_S390_GUARDED_STORAGE, FALSE);
+         }
+      }
+   }
 
 int32_t
-CPU::TO_PORTLIB_get390MachineId()
+J9::Z::CPU::TO_PORTLIB_get390MachineId()
   {
 #if defined(J9ZTPF) || defined(J9ZOS390)
    // Note we cannot use utsname on Linux as it simply returns "s390x" in info.machine. On z/OS we can indeed use it [1].
@@ -100,7 +173,7 @@ CPU::TO_PORTLIB_get390MachineId()
    }
 
 bool
-CPU::TO_PORTLIB_get390_supportsZNext()
+J9::Z::CPU::TO_PORTLIB_get390_supportsZNext()
    {
 #if defined(TR_HOST_S390) && (defined(J9ZOS390) || defined(LINUX))
    J9ProcessorDesc *processorDesc = TR::Compiler->target.cpu.TO_PORTLIB_getJ9ProcessorDesc();
@@ -110,7 +183,7 @@ CPU::TO_PORTLIB_get390_supportsZNext()
    }
 
 bool
-CPU::TO_PORTLIB_get390_supportsZ15()
+J9::Z::CPU::TO_PORTLIB_get390_supportsZ15()
    {
 #if defined(TR_HOST_S390) && (defined(J9ZOS390) || defined(LINUX))
    J9ProcessorDesc *processorDesc = TR::Compiler->target.cpu.TO_PORTLIB_getJ9ProcessorDesc();
@@ -120,7 +193,7 @@ CPU::TO_PORTLIB_get390_supportsZ15()
    }
 
 bool
-CPU::TO_PORTLIB_get390_supportsZ14()
+J9::Z::CPU::TO_PORTLIB_get390_supportsZ14()
    {
 #if defined(TR_HOST_S390) && (defined(J9ZOS390) || defined(LINUX))
    J9ProcessorDesc *processorDesc = TR::Compiler->target.cpu.TO_PORTLIB_getJ9ProcessorDesc();
@@ -130,7 +203,7 @@ CPU::TO_PORTLIB_get390_supportsZ14()
    }
 
 bool
-CPU::TO_PORTLIB_get390_supportsZ13()
+J9::Z::CPU::TO_PORTLIB_get390_supportsZ13()
    {
 #if defined(TR_HOST_S390) && (defined(J9ZOS390) || defined(LINUX))
    J9ProcessorDesc *processorDesc = TR::Compiler->target.cpu.TO_PORTLIB_getJ9ProcessorDesc();
@@ -141,7 +214,7 @@ CPU::TO_PORTLIB_get390_supportsZ13()
 
 
 bool
-CPU::TO_PORTLIB_get390_supportsZ6()
+J9::Z::CPU::TO_PORTLIB_get390_supportsZ6()
    {
 #if defined(TR_HOST_S390) && (defined(J9ZOS390) || defined(LINUX))
    J9ProcessorDesc  *processorDesc = TR::Compiler->target.cpu.TO_PORTLIB_getJ9ProcessorDesc();
@@ -152,7 +225,7 @@ CPU::TO_PORTLIB_get390_supportsZ6()
 
 
 bool
-CPU::TO_PORTLIB_get390_supportsZGryphon()
+J9::Z::CPU::TO_PORTLIB_get390_supportsZGryphon()
    {
    // Location 200 is architected such that bit 45 is ON if zG
    // instruction is installed
@@ -165,7 +238,7 @@ CPU::TO_PORTLIB_get390_supportsZGryphon()
 
 
 bool
-CPU::TO_PORTLIB_get390_supportsZHelix()
+J9::Z::CPU::TO_PORTLIB_get390_supportsZHelix()
    {
 #if defined(TR_HOST_S390) && (defined(J9ZOS390) || defined(LINUX))
    J9ProcessorDesc  *processorDesc = TR::Compiler->target.cpu.TO_PORTLIB_getJ9ProcessorDesc();
@@ -175,7 +248,7 @@ CPU::TO_PORTLIB_get390_supportsZHelix()
    }
 
 void
-CPU::initializeS390ProcessorFeatures()
+J9::Z::CPU::initializeS390ProcessorFeatures()
    {
    // The following nested if statements cascade so as to have the effect of only enabling the least common denominator
    // of disable CPU architectures. For example if the user specified to disable z13 when running on a z15 machine the
@@ -311,29 +384,107 @@ CPU::initializeS390ProcessorFeatures()
       }
    }
 
-TR_ProcessorFeatureFlags
-CPU::getProcessorFeatureFlags()
+bool
+J9::Z::CPU::is_at_least_test(OMRProcessorArchitecture p)
    {
-   TR_ProcessorFeatureFlags processorFeatureFlags = { {_flags.getValue()} };
-   return processorFeatureFlags;
+#if defined(J9VM_OPT_JITSERVER)
+   if (TR::CompilationInfo::getStream())
+      return true;
+#endif /* defined(J9VM_OPT_JITSERVER) */
+
+   switch(p)
+      {
+      case OMR_PROCESSOR_S390_Z10:
+         return (self()->getSupportsArch(TR::CPU::z10) == (_processorDescription.processor >= p));
+      case OMR_PROCESSOR_S390_Z196:
+         return (self()->getSupportsArch(TR::CPU::z196) == (_processorDescription.processor >= p));
+      case OMR_PROCESSOR_S390_ZEC12:
+         return (self()->getSupportsArch(TR::CPU::zEC12) == (_processorDescription.processor >= p));
+      case OMR_PROCESSOR_S390_Z13:
+         return (self()->getSupportsArch(TR::CPU::z13) == (_processorDescription.processor >= p));
+      case OMR_PROCESSOR_S390_Z14:
+         return (self()->getSupportsArch(TR::CPU::z14) == (_processorDescription.processor >= p));
+      case OMR_PROCESSOR_S390_Z15:
+         return (self()->getSupportsArch(TR::CPU::z15) == (_processorDescription.processor >= p));
+      case OMR_PROCESSOR_S390_ZNEXT:
+         return (self()->getSupportsArch(TR::CPU::zNext) == (_processorDescription.processor >= p));
+      default:
+         return false;
+      }
+   return false;
    }
 
 bool
-CPU::isCompatible(TR_Processor processorSignature, TR_ProcessorFeatureFlags processorFeatureFlags)
+J9::Z::CPU::supports_feature_test(uint32_t feature)
    {
-   if (self()->id() < processorSignature)
+#if defined(J9VM_OPT_JITSERVER)
+   if (TR::CompilationInfo::getStream())
+      return true;
+#endif /* defined(J9VM_OPT_JITSERVER) */
+
+   OMRPORT_ACCESS_FROM_OMRPORT(TR::Compiler->omrPortLib);
+   bool ans = (TRUE == omrsysinfo_processor_has_feature(&_processorDescription, feature));
+
+   switch(feature)
+      {
+      case OMR_FEATURE_S390_HIGH_WORD:
+         return (self()->getSupportsHighWordFacility() == ans);
+      case OMR_FEATURE_S390_DFP:
+         return (self()->getSupportsDecimalFloatingPointFacility() == ans);
+      case OMR_FEATURE_S390_FPE:
+         return (self()->getSupportsFloatingPointExtensionFacility() == ans);
+      case OMR_FEATURE_S390_TE:
+         return (self()->getSupportsTransactionalMemoryFacility() == ans);
+      case OMR_FEATURE_S390_RI:
+         return (self()->getSupportsRuntimeInstrumentationFacility() == ans);
+      case OMR_FEATURE_S390_VECTOR_FACILITY:
+         return (self()->getSupportsVectorFacility() == ans);
+      case OMR_FEATURE_S390_VECTOR_PACKED_DECIMAL:
+         return (self()->getSupportsVectorPackedDecimalFacility() == ans);
+      case OMR_FEATURE_S390_MISCELLANEOUS_INSTRUCTION_EXTENSION_3:
+         return (self()->getSupportsMiscellaneousInstructionExtensions3Facility() == ans);
+      case OMR_FEATURE_S390_VECTOR_FACILITY_ENHANCEMENT_2:
+         return (self()->getSupportsVectorFacilityEnhancement2() == ans);
+      case OMR_FEATURE_S390_VECTOR_PACKED_DECIMAL_ENHANCEMENT_FACILITY:
+         return (self()->getSupportsVectorPackedDecimalEnhancementFacility() == ans);
+      case OMR_FEATURE_S390_GUARDED_STORAGE:
+         return (self()->getSupportsGuardedStorageFacility() == ans);
+      case OMR_FEATURE_S390_MISCELLANEOUS_INSTRUCTION_EXTENSION_2:
+         return (self()->getSupportsMiscellaneousInstructionExtensions2Facility() == ans);
+      case OMR_FEATURE_S390_VECTOR_FACILITY_ENHANCEMENT_1:
+         return (self()->getSupportsVectorFacilityEnhancement1() == ans);
+      default:
+         return false;
+      }
+   return false;
+   }
+
+bool
+J9::Z::CPU::isCompatible(const OMRProcessorDesc& processorDescription)
+   {
+   if (!self()->isAtLeast(processorDescription.processor))
       {
       return false;
       }
-   for (int i = 0; i < PROCESSOR_FEATURES_SIZE; i++)
+   for (int i = 0; i < OMRPORT_SYSINFO_FEATURES_SIZE; i++)
       {
       // Check to see if the current processor contains all the features that code cache's processor has
-      if ((processorFeatureFlags.featureFlags[i] & self()->getProcessorFeatureFlags().featureFlags[i]) != processorFeatureFlags.featureFlags[i])
+      if ((processorDescription.features[i] & self()->getProcessorDescription().features[i]) != processorDescription.features[i])
          return false;
       }
    return true;
    }
 
-}
+OMRProcessorDesc
+J9::Z::CPU::getProcessorDescription()
+   {
+#if defined(J9VM_OPT_JITSERVER)
+   if (auto stream = TR::CompilationInfo::getStream())
+      {
+      auto *vmInfo = TR::compInfoPT->getClientData()->getOrCacheVMInfo(stream);
+      return vmInfo->_processorDescription;
+      }
+#endif /* defined(J9VM_OPT_JITSERVER) */
+   return _processorDescription;
+   }
 
-}

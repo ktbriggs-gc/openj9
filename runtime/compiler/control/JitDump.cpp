@@ -356,8 +356,8 @@ runJitdump(char *label, J9RASdumpContext *context, J9RASdumpAgent *agent)
       if (compInfo)
          {
          static char * isPrintJITServerMsgStats = feGetEnv("TR_PrintJITServerMsgStats");
-         if (isPrintJITServerMsgStats && compInfo->getPersistentInfo()->getRemoteCompilationMode() == JITServer::CLIENT)
-            JITServerHelpers::printJITServerMsgStats(jitConfig);
+         if (isPrintJITServerMsgStats)
+            JITServerHelpers::printJITServerMsgStats(jitConfig, compInfo);
          if (feGetEnv("TR_PrintJITServerCHTableStats"))
             JITServerHelpers::printJITServerCHTableStats(jitConfig, compInfo);
          if (feGetEnv("TR_PrintJITServerIPMsgStats"))
@@ -435,6 +435,21 @@ runJitdump(char *label, J9RASdumpContext *context, J9RASdumpAgent *agent)
       "<jitDump>\n"
       );
 
+#if defined(J9VM_OPT_JITSERVER)
+   if (context && context->javaVM && context->javaVM->jitConfig)
+      {
+      J9JITConfig *jitConfig = context->javaVM->jitConfig;
+      TR::CompilationInfo *compInfo = TR::CompilationInfo::get(context->javaVM->jitConfig);
+      if (compInfo &&
+          compInfo->getPersistentInfo()->getRemoteCompilationMode() == JITServer::SERVER)
+         {
+         jitDumpFailedBecause(crashedThread, "Skipped jitdump at the JITServer");
+         trfprintf(logFile, "Skipped jitdump at the JITServer\n");
+         trfclose(logFile);
+         return OMR_ERROR_NONE;
+         }
+      }
+#endif /* defined(J9VM_OPT_JITSERVER) */
 
    // if some thread holds exclusive VM access we cannot do much
    if (J9_XACCESS_NONE != jitConfig->javaVM->exclusiveAccessState)

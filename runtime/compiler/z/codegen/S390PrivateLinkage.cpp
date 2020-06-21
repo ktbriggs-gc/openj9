@@ -101,7 +101,7 @@ J9::Z::PrivateLinkage::PrivateLinkage(TR::CodeGenerator * codeGen,TR_S390Linkage
    setLongDoubleReturnRegister4  (TR::RealRegister::FPR4 );
    setLongDoubleReturnRegister6  (TR::RealRegister::FPR6 );
 
-   if(codeGen->comp()->target().cpu.getSupportsArch(TR::CPU::z13) && codeGen->comp()->target().cpu.getSupportsVectorFacility() &&
+   if(codeGen->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_S390_Z13) && codeGen->comp()->target().cpu.supportsFeature(OMR_FEATURE_S390_VECTOR_FACILITY) &&
      !comp()->getOption(TR_DisableSIMD))
        {
        codeGen->setSupportsVectorRegisters();
@@ -1093,7 +1093,7 @@ J9::Z::PrivateLinkage::setupLiteralPoolRegister(TR::Snippet *firstSnippet)
    if (!cg()->isLiteralPoolOnDemandOn() && firstSnippet != NULL)
       {
       // The immediate operand will be patched when the actual address of the literal pool is known
-      if (!cg()->comp()->target().cpu.getSupportsArch(TR::CPU::z10) || cg()->anyLitPoolSnippets())
+      if (!cg()->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_S390_Z10) || cg()->anyLitPoolSnippets())
          {
          return getLitPoolRealRegister()->getRegisterNumber();
          }
@@ -1422,7 +1422,7 @@ J9::Z::PrivateLinkage::createPrologue(TR::Instruction * cursor)
    // Save or move arguments according to the result of register assignment.
    cursor = (TR::Instruction *) saveArguments(cursor, false);
 
-   if (cg()->comp()->target().cpu.getSupportsArch(TR::CPU::z10))
+   if (cg()->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_S390_Z10))
       {
       static const bool prefetchStack = feGetEnv("TR_PrefetchStack") != NULL;
 
@@ -2521,7 +2521,7 @@ J9::Z::PrivateLinkage::setupJNICallOutFrame(TR::Node * callNode,
    TR::RealRegister * javaStackPointerRealRegister,
    TR::Register * methodMetaDataVirtualRegister,
    TR::LabelSymbol * returnFromJNICallLabel,
-   TR::S390JNICallDataSnippet2 *jniCallDataSnippet)
+   TR::S390JNICallDataSnippet *jniCallDataSnippet)
    {
    TR::CodeGenerator * codeGen = cg();
    TR_J9VMBase *fej9 = (TR_J9VMBase *)(fe());
@@ -2598,7 +2598,7 @@ J9::Z::PrivateLinkage::setupJNICallOutFrame(TR::Node * callNode,
  */
 void J9::Z::JNILinkage::releaseVMAccessMask(TR::Node * callNode,
    TR::Register * methodMetaDataVirtualRegister, TR::Register * methodAddressReg, TR::Register * javaLitOffsetReg,
-   TR::S390JNICallDataSnippet2 * jniCallDataSnippet, TR::RegisterDependencyConditions * deps)
+   TR::S390JNICallDataSnippet * jniCallDataSnippet, TR::RegisterDependencyConditions * deps)
    {
    TR::LabelSymbol * loopHead = generateLabelSymbol(self()->cg());
    TR::LabelSymbol * longReleaseLabel = generateLabelSymbol(self()->cg());
@@ -2758,7 +2758,7 @@ J9::Z::JNILinkage::releaseVMAccessMaskAtomicFree(TR::Node * callNode,
    TR::CodeGenerator* cg = self()->cg();
    TR::Compilation* comp = self()->comp();
 
-   if (cg->comp()->target().cpu.getSupportsArch(TR::CPU::z10))
+   if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_S390_Z10))
       {
       // Store a 1 into vmthread->inNative
       generateSILInstruction(cg, TR::InstOpCode::getMoveHalfWordImmOpCode(), callNode,
@@ -2889,7 +2889,7 @@ J9::Z::JNILinkage::processJNIReturnValue(TR::Node * callNode,
       }
    else if ((returnType == TR::Int8) && comp()->getSymRefTab()->isReturnTypeBool(callNode->getSymbolReference()))
       {
-      if (cg->comp()->target().cpu.getSupportsArch(TR::CPU::z13))
+      if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_S390_Z13))
          {
          generateRIInstruction(cg, TR::InstOpCode::getCmpHalfWordImmOpCode(), callNode, javaReturnRegister, 0);
          generateRIEInstruction(cg, cg->comp()->target().is64Bit() ? TR::InstOpCode::LOCGHI : TR::InstOpCode::LOCHI,
@@ -2946,7 +2946,7 @@ TR::Register * J9::Z::JNILinkage::buildDirectDispatch(TR::Node * callNode)
    deps = generateRegisterDependencyConditions(numDeps, numDeps, cg());
    int64_t killMask = -1;
    TR::Register *vftReg = NULL;
-   TR::S390JNICallDataSnippet2 * jniCallDataSnippet = NULL;
+   TR::S390JNICallDataSnippet * jniCallDataSnippet = NULL;
    TR::RealRegister * javaStackPointerRealRegister = getStackPointerRealRegister();
    TR::RealRegister * methodMetaDataRealRegister = getMethodMetaDataRealRegister();
    TR::RealRegister * javaLitPoolRealRegister = getLitPoolRealRegister();
@@ -3032,7 +3032,7 @@ TR::Register * J9::Z::JNILinkage::buildDirectDispatch(TR::Node * callNode)
      {
      TR::Register * JNISnippetBaseReg = NULL;
      killMask = killAndAssignRegister(killMask, deps, &JNISnippetBaseReg, TR::RealRegister::GPR12, codeGen, true);
-     jniCallDataSnippet = new (trHeapMemory()) TR::S390JNICallDataSnippet2(cg(), callNode);
+     jniCallDataSnippet = new (trHeapMemory()) TR::S390JNICallDataSnippet(cg(), callNode);
      cg()->addSnippet(jniCallDataSnippet);
      jniCallDataSnippet->setBaseRegister(JNISnippetBaseReg);
      new (trHeapMemory()) TR::S390RILInstruction(TR::InstOpCode::LARL, callNode,
@@ -3056,7 +3056,7 @@ TR::Register * J9::Z::JNILinkage::buildDirectDispatch(TR::Node * callNode)
      auto* literalOffsetMemoryReference = new (trHeapMemory()) TR::MemoryReference(methodMetaDataVirtualRegister, (int32_t)fej9->thisThreadGetJavaLiteralsOffset(), codeGen);
 
      // Set up literal offset slot to zero
-     if (cg()->comp()->target().cpu.getSupportsArch(TR::CPU::z10))
+     if (cg()->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_S390_Z10))
         {
         generateSILInstruction(codeGen, TR::InstOpCode::getMoveHalfWordImmOpCode(), callNode, literalOffsetMemoryReference, 0);
         }
@@ -3435,53 +3435,6 @@ J9::Z::PrivateLinkage::buildIndirectDispatch(TR::Node * callNode)
 #endif
    dependencies->stopUsingDepRegs(cg(), lowReg == NULL ? returnRegister : highReg, lowReg);
    return returnRegister;
-   }
-
-////////////////////////////////////////////////////////////////////////////////
-// J9::Z::PrivateLinkage::mapIncomingParms - maps parameters onto the stack for the given method.
-//   This function iterates over the parameters, mapping them onto the stack, either right
-//   to left, or left to right, depending on S390Linkage properties.
-//   This code was removed from J9::Z::PrivateLinkage::mapStack as it is common code that
-//   is now called by J9::Z::PrivateLinkage::mapCompactedStack as well.
-////////////////////////////////////////////////////////////////////////////////
-void
-J9::Z::PrivateLinkage::mapIncomingParms(TR::ResolvedMethodSymbol *method)
-   {
-   ListIterator<TR::ParameterSymbol> parameterIterator(&method->getParameterList());
-   TR::ParameterSymbol * parmCursor = parameterIterator.getFirst();
-   int32_t offsetToFirstParm = getOffsetToFirstParm();
-   if (getRightToLeft())
-      {
-      while (parmCursor != NULL)
-         {
-         parmCursor->setParameterOffset(parmCursor->getParameterOffset() + offsetToFirstParm);
-         parmCursor = parameterIterator.getNext();
-         }
-      }
-   else
-      {
-      uint32_t sizeOfParameterArea = method->getNumParameterSlots() << (cg()->comp()->target().is64Bit() ? 3 : 2);
-      while (parmCursor != NULL)
-         {
-         if (cg()->comp()->target().is64Bit() && parmCursor->getDataType() != TR::Address)
-            // in 64Bit mode: long and double args takes 2x8 byte slots
-            // all other types takes 1x8 byte
-            {
-            parmCursor->setParameterOffset(sizeOfParameterArea -
-                           parmCursor->getParameterOffset() -
-                           parmCursor->getSize() * 2 +
-                           offsetToFirstParm);
-            }
-         else
-            {
-            parmCursor->setParameterOffset(sizeOfParameterArea -
-                           parmCursor->getParameterOffset() -
-                           parmCursor->getSize() +
-                           offsetToFirstParm);
-            }
-         parmCursor = parameterIterator.getNext();
-         }
-      }
    }
 
 void

@@ -1235,6 +1235,7 @@ void loadFieldWatchSnippet(TR::CodeGenerator *cg, TR::Node *node, TR::Snippet *d
       {
       if (beginIndex<LOWER_IMMED || beginIndex>UPPER_IMMED)
          {
+         TR_ASSERT_FATAL_WITH_NODE(node, 0x00008000 != HI_VALUE(beginIndex), "TOC offset (0x%x) is unexpectedly high. Can not encode upper 16 bits into an addis instruction.", beginIndex);
          generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addis, node, scratchReg, cg->getTOCBaseRegister(), HI_VALUE(beginIndex));
          generateTrg1MemInstruction(cg,TR::InstOpCode::Op_load, node, snippetReg, new (cg->trHeapMemory()) TR::MemoryReference(scratchReg, LO_VALUE(beginIndex), TR::Compiler->om.sizeofReferenceAddress(), cg));
          }
@@ -1373,7 +1374,7 @@ TR::Register *J9::Power::TreeEvaluator::awrtbarEvaluator(TR::Node *node, TR::Cod
 
    if (comp->isOptServer() && !comp->compileRelocatableCode() && !comp->getOptions()->realTimeGC())
       {
-      if (cg->comp()->target().cpu.id() < TR_PPCp8)
+      if (!cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P8))
          {
          static bool disableOutlinedWrtbar = feGetEnv("TR_ppcDisableOutlinedWriteBarrier") != NULL;
          if (!disableOutlinedWrtbar)
@@ -1753,7 +1754,7 @@ TR::Register *iGenerateSoftwareReadBarrier(TR::Node *node, TR::CodeGenerator *cg
    //TODO: Patching code needs to be updated to be able to patch out these new sync instructions.
    if (needSync)
       {
-      generateInstruction(cg, cg->comp()->target().cpu.id() >= TR_PPCp7 ? TR::InstOpCode::lwsync : TR::InstOpCode::isync, node);
+      generateInstruction(cg, cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P7) ? TR::InstOpCode::lwsync : TR::InstOpCode::isync, node);
       }
 
    cg->insertPrefetchIfNecessary(node, objReg);
@@ -1873,7 +1874,7 @@ TR::Register *aGenerateSoftwareReadBarrier(TR::Node *node, TR::CodeGenerator *cg
    //TODO: Patching code needs to be updated to be able to patch out these new sync instructions.
    if (needSync)
       {
-      generateInstruction(cg, cg->comp()->target().cpu.id() >= TR_PPCp7 ? TR::InstOpCode::lwsync : TR::InstOpCode::isync, node);
+      generateInstruction(cg, cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P7) ? TR::InstOpCode::lwsync : TR::InstOpCode::isync, node);
       }
 
    tempMR->decNodeReferenceCounts(cg);
@@ -2341,7 +2342,6 @@ static void genBoundCheck(TR::CodeGenerator *cg, TR::Node *node, TR::Register *i
 
       // NOTE: Trampoline kills gr11
       gcPoint = generateConditionalBranchInstruction(cg, TR::InstOpCode::blel, PPCOpProp_BranchUnlikely, node, boundCheckFailSnippetLabel, condReg);
-
       }
    else
       {
@@ -2695,7 +2695,7 @@ static TR::Register *addConstantToLongWithTempReg(TR::Node * node, TR::Register 
       {
       generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addis, node, trgReg, srcReg, value >> 16);
       if (value & 0xffff)
-         generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addi2, node, trgReg, trgReg, value);
+         generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addi2, node, trgReg, trgReg, LO_VALUE(value));
       }
    else
       {
@@ -3903,7 +3903,7 @@ TR::Register *J9::Power::TreeEvaluator::flushEvaluator(TR::Node *node, TR::CodeG
       {
       if (opCode == TR::loadFence)
          {
-         if (cg->comp()->target().cpu.id() == TR_PPCp7)
+         if (cg->comp()->target().cpu.is(OMR_PROCESSOR_PPC_P7))
             generateInstruction(cg, TR::InstOpCode::lwsync, node);
          else
             generateInstruction(cg, TR::InstOpCode::isync, node);
@@ -4111,20 +4111,32 @@ void genInstanceOfOrCheckCastSuperClassTest(TR::Node *node, TR::Register *condRe
    //
    TR::Register *instanceClassSuperClassesArrayReg = srm->findOrCreateScratchRegister();
    TR::Register *instanceClassSuperClassReg = srm->findOrCreateScratchRegister();
+
    generateTrg1MemInstruction(cg,TR::InstOpCode::Op_load, node, instanceClassSuperClassesArrayReg,
                               new (cg->trHeapMemory()) TR::MemoryReference(instanceClassReg, offsetof(J9Class, superclasses), TR::Compiler->om.sizeofReferenceAddress(), cg));
+
    int32_t castClassDepthOffset = castClassDepth * TR::Compiler->om.sizeofReferenceAddress();
    if (castClassDepthOffset <= UPPER_IMMED && castClassDepthOffset >= LOWER_IMMED)
+      {
       generateTrg1MemInstruction(cg, TR::InstOpCode::Op_load, node, instanceClassSuperClassReg,
                                  new (cg->trHeapMemory()) TR::MemoryReference(instanceClassSuperClassesArrayReg, castClassDepthOffset, TR::Compiler->om.sizeofReferenceAddress(), cg));
+      }
    else
       {
       if (!castClassDepthReg)
          {
          castClassDepthReg = srm->findOrCreateScratchRegister();
-         generateTrg1ImmInstruction(cg, TR::InstOpCode::lis, node, castClassDepthReg, HI_VALUE(castClassDepthOffset));
+         if (0x00008000 == HI_VALUE(castClassDepthOffset))
+            {
+            generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addis, node, castClassDepthReg, instanceClassSuperClassesArrayReg, 0x7FFF);
+            generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addis, node, castClassDepthReg, castClassDepthReg, 0x1);
+            }
+         else
+            {
+            generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addis, node, castClassDepthReg, instanceClassSuperClassesArrayReg, HI_VALUE(castClassDepthOffset));
+            }
          generateTrg1MemInstruction(cg, TR::InstOpCode::Op_load, node, instanceClassSuperClassReg,
-                                    new (cg->trHeapMemory()) TR::MemoryReference(instanceClassSuperClassesArrayReg, LO_VALUE(castClassDepthOffset), TR::Compiler->om.sizeofReferenceAddress(), cg));
+                                    new (cg->trHeapMemory()) TR::MemoryReference(castClassDepthReg, LO_VALUE(castClassDepthOffset), TR::Compiler->om.sizeofReferenceAddress(), cg));
          }
       else
          {
@@ -4272,7 +4284,7 @@ void genInstanceOfOrCheckCastHelperCall(TR::Node *node, TR::Register *objectReg,
    deps->stopUsingDepRegs(cg, 3, nodeRegs);
    }
 
-TR::Register *J9::Power::TreeEvaluator::VMcheckcastEvaluator2(TR::Node *node, TR::CodeGenerator *cg)
+TR::Register *J9::Power::TreeEvaluator::VMcheckcastEvaluator(TR::Node *node, TR::CodeGenerator *cg)
    {
    TR::Compilation                      *comp = cg->comp();
    TR_J9VMBase                          *fej9 = reinterpret_cast<TR_J9VMBase *>(comp->fe());
@@ -4430,7 +4442,7 @@ TR::Register *J9::Power::TreeEvaluator::VMcheckcastEvaluator2(TR::Node *node, TR
    return NULL;
    }
 
-TR::Register *J9::Power::TreeEvaluator::VMinstanceOfEvaluator2(TR::Node *node, TR::CodeGenerator *cg)
+TR::Register *J9::Power::TreeEvaluator::VMinstanceOfEvaluator(TR::Node *node, TR::CodeGenerator *cg)
    {
    TR::Compilation                      *comp = cg->comp();
    TR_OpaqueClassBlock                  *compileTimeGuessClass;
@@ -4630,285 +4642,6 @@ static bool needTestCache(bool cachingEnabled, bool needsHelperCall, bool superC
    return cachingEnabled && needsHelperCall && !superClassTest && castClassAddr && num_PICS;
    }
 
-TR::Register *J9::Power::TreeEvaluator::VMcheckcastEvaluator(TR::Node *node, TR::CodeGenerator *cg)
-   {
-   static bool newCheckCast = feGetEnv("TR_oldCheckCast") == NULL;
-   if (newCheckCast)
-      return VMcheckcastEvaluator2(node, cg);
-
-   TR_ASSERT_FATAL(!cg->comp()->compileRelocatableCode() || !cg->comp()->getOption(TR_UseSymbolValidationManager),
-      "Old checkcast and instanceof evaluators are not supported under AOT");
-
-   TR_J9VMBase *fej9 = (TR_J9VMBase *) (cg->fe());
-   TR::Register *objReg, *castClassReg, *objClassReg, *scratch1Reg, *scratch2Reg, *cndReg;
-   TR::LabelSymbol *doneLabel, *callLabel, *callForInlineLabel, *nextTestLabel;
-   TR::SymbolReference *castClassSymRef;
-   TR::StaticSymbol *castClassSym;
-   TR::Node *objNode, *castClassNode;
-   TR_OpaqueClassBlock *castClassAddr;
-   TR_OpaqueClassBlock *guessClassArray[NUM_PICS];
-   TR::RegisterDependencyConditions *conditions = createConditionsAndPopulateVSXDeps(cg, 7);
-   TR::Instruction *gcPoint;
-   TR_Debug *debugObj = cg->getDebug();
-   objNode = node->getFirstChild();
-   castClassNode = node->getSecondChild();
-   castClassSymRef = castClassNode->getSymbolReference();
-   castClassAddr = TR::TreeEvaluator::getCastClassAddress(castClassNode);
-   uint8_t num_PICS = TR::TreeEvaluator::interpreterProfilingInstanceOfOrCheckCastInfo(cg, node, guessClassArray);
-   bool foundGuessClass = false;
-   TR_OpaqueClassBlock *tmpClassAddr, *validGuessClassArray[NUM_PICS];
-   uint8_t numberOfValidGuessClasses = 0;
-   TR::Compilation * comp = cg->comp();
-   // Defect# 90652 (PPC), 92901 (390)
-   // if the test fails for the checkcast, do not generate inline check for guess value
-   if (guessClassArray && castClassAddr)
-      {
-      for (uint8_t i = 0; i < num_PICS; i++)
-         {
-         tmpClassAddr = guessClassArray[i];
-         if (fej9->instanceOfOrCheckCast((J9Class*) tmpClassAddr, (J9Class*) castClassAddr))
-            {
-            foundGuessClass = true;
-            validGuessClassArray[numberOfValidGuessClasses] = tmpClassAddr;
-            numberOfValidGuessClasses++;
-            }
-         }
-      }
-
-   bool testEqualClass = instanceOfOrCheckCastNeedEqualityTest(node, cg);
-   bool testCastClassIsSuper = instanceOfOrCheckCastNeedSuperTest(node, cg);
-   bool isFinalClass = (castClassSymRef == NULL) ? false : castClassSymRef->isNonArrayFinal(comp);
-   bool needsHelperCall = needHelperCall(testCastClassIsSuper, isFinalClass);
-   bool testCache = needTestCache(!comp->getOption(TR_DisableInlineCheckCast), needsHelperCall, testCastClassIsSuper, castClassAddr, numberOfValidGuessClasses);
-   bool needsNullTest = !objNode->isNonNull();
-
-   bool isCheckcastAndNullChk = (node->getOpCodeValue() == TR::checkcastAndNULLCHK);
-
-   castClassReg = cg->evaluate(castClassNode);
-
-   objReg = cg->evaluate(objNode);
-
-   if (needsNullTest && isCheckcastAndNullChk)
-      {
-      // get the bytecode info of the
-      // NULLCHK that was compacted
-      TR::Node *nullChkInfo = comp->findNullChkInfo(node);
-      if (cg->getHasResumableTrapHandler())
-         gcPoint = generateNullTestInstructions(cg, objReg, nullChkInfo);
-      else
-         // a helper is needed
-         gcPoint = generateNullTestInstructions(cg, objReg, nullChkInfo, true);
-      gcPoint->PPCNeedsGCMap(0xFFFFFFFF);
-      }
-
-   objClassReg = cg->allocateRegister();
-
-   // Assuming: CR is preserved by the call --- OTI commitment
-   TR::addDependency(conditions, objReg, TR::RealRegister::gr4, TR_GPR, cg);
-   TR::addDependency(conditions, castClassReg, TR::RealRegister::gr3, TR_GPR, cg);
-   TR::addDependency(conditions, objClassReg, TR::RealRegister::gr11, TR_GPR, cg);
-
-   // We should be able to relax the mask to 0x00000000 if GC only happens under exception.
-   if (!testEqualClass && !testCache && !testCastClassIsSuper)
-      {
-      gcPoint = generateDepImmSymInstruction(cg, TR::InstOpCode::bl, node, (uintptr_t) node->getSymbolReference()->getMethodAddress(), conditions, node->getSymbolReference());
-      gcPoint->PPCNeedsGCMap(0xFFFFFFFF);
-      cg->stopUsingRegister(objClassReg);
-      cg->decReferenceCount(objNode);
-      cg->decReferenceCount(castClassNode);
-      cg->machine()->setLinkRegisterKilled(true);
-      return NULL;
-      }
-
-   doneLabel = generateLabelSymbol(cg);
-   callLabel = generateLabelSymbol(cg);
-
-   TR::LabelSymbol *startOOLLabel, *doneOOLLabel, *helperReturnOOLLabel = NULL;
-   TR_PPCOutOfLineCodeSection *outlinedSlowPath = NULL;
-   TR::RegisterDependencyConditions *condOOL = NULL;
-
-   cndReg = cg->allocateRegister(TR_CCR);
-   TR::addDependency(conditions, cndReg, TR::RealRegister::NoReg, TR_CCR, cg);
-
-   // From this point forward we know that at least one of testEqualClass, testCache or testCastClassIsSuper is true
-
-   // Ideally, value profiling on checkCasts is the way to detect if we should skip nullTest. For now, we pick
-   // well-known ones to not skip.
-   bool dontSkipNullTest = !strncmp(comp->signature(), "org/apache/xerces/dom/ParentNode.internalInsertBefore", 53);
-
-   bool skipNullTest = ((cg->comp()->target().is32Bit() && cg->comp()->target().isAIX()) && (!testCastClassIsSuper || castClassSymRef->classDepth(comp) < (AIX_NULL_ZERO_AREA_SIZE / TR::Compiler->om.sizeofReferenceAddress()))
-         && offsetof(J9Class, classDepthAndFlags) < AIX_NULL_ZERO_AREA_SIZE && offsetof(J9Class, superclasses) < AIX_NULL_ZERO_AREA_SIZE) && !dontSkipNullTest;
-   if (needsNullTest && !isCheckcastAndNullChk && !skipNullTest)
-      {
-      // objClassReg is used as a scratch register here
-      genNullTest(node, objReg, cndReg, objClassReg, NULL, cg);
-      generateConditionalBranchInstruction(cg, TR::InstOpCode::beq, node, doneLabel, cndReg);
-      }
-
-   generateLoadJ9Class(node, objClassReg, objReg, cg);
-
-   if (testEqualClass)
-      {
-      generateTrg1Src2Instruction(cg,TR::InstOpCode::Op_cmpl, node, cndReg, objClassReg, castClassReg);
-      if (testCache || testCastClassIsSuper)
-         {
-         // Direct the code to OOL section, so flip the branch when OOL enabled.
-         static bool disableOOLcheckcast = (feGetEnv("TR_DisableOOLcheckcast") != NULL);
-         if (!comp->getOption(TR_DisableOOL) && !disableOOLcheckcast)
-            {
-            startOOLLabel = generateLabelSymbol(cg);
-            doneOOLLabel = generateLabelSymbol(cg);
-            helperReturnOOLLabel = generateLabelSymbol(cg);
-
-            condOOL = new (cg->trHeapMemory()) TR::RegisterDependencyConditions(3, 3, cg->trMemory());
-            TR::addDependency(condOOL, objReg, TR::RealRegister::gr4, TR_GPR, cg);
-            TR::addDependency(condOOL, castClassReg, TR::RealRegister::NoReg, TR_GPR, cg);
-            TR::addDependency(condOOL, objClassReg, TR::RealRegister::NoReg, TR_GPR, cg);
-
-            TR::Instruction *OOLBranchInstr = generateConditionalBranchInstruction(cg, TR::InstOpCode::bne, node, startOOLLabel, cndReg);
-            if (debugObj)
-               debugObj->addInstructionComment(OOLBranchInstr, "Branch to OOL checkCast sequence");
-            outlinedSlowPath = new (cg->trHeapMemory()) TR_PPCOutOfLineCodeSection(startOOLLabel, doneOOLLabel, cg);
-            cg->getPPCOutOfLineCodeSectionList().push_front(outlinedSlowPath);
-            outlinedSlowPath->swapInstructionListsWithCompilation();
-            TR::Instruction *OOLLabelInstr = generateLabelInstruction(cg, TR::InstOpCode::label, node, startOOLLabel);
-            if (debugObj)
-               debugObj->addInstructionComment(OOLLabelInstr, "Denotes start of OOL checkCast sequence");
-            // XXX: Temporary fix, OOL instruction stream does not pick up live locals or monitors correctly.
-            TR_ASSERT(!OOLLabelInstr->getLiveLocals() && !OOLLabelInstr->getLiveMonitors(), "Expecting first OOL instruction to not have live locals/monitors info");
-            OOLLabelInstr->setLiveLocals(OOLBranchInstr->getLiveLocals());
-            OOLLabelInstr->setLiveMonitors(OOLBranchInstr->getLiveMonitors());
-            }
-         else
-            generateConditionalBranchInstruction(cg, TR::InstOpCode::beq, node, doneLabel, cndReg);
-         }
-      else
-         {
-         gcPoint = generateConditionalBranchInstruction(cg, TR::InstOpCode::bne, node, callLabel, cndReg);
-         }
-      }
-   TR::Snippet *snippet = NULL;
-   if (outlinedSlowPath)
-      {
-      snippet = new (cg->trHeapMemory()) TR::PPCHelperCallSnippet(cg, node, callLabel, node->getSymbolReference(), helperReturnOOLLabel);
-      }
-   else
-      {
-      snippet = new (cg->trHeapMemory()) TR::PPCHelperCallSnippet(cg, node, callLabel, node->getSymbolReference(), doneLabel);
-      }
-   snippet->gcMap().setGCRegisterMask(0xFFFFFFFF);
-   cg->addSnippet(snippet);
-
-   if (testCache || testCastClassIsSuper)
-      {
-      scratch1Reg = cg->allocateRegister();
-      // Only 64-bit target uses scratch2Reg on testCache
-      scratch2Reg = cg->allocateRegister();
-      TR::addDependency(conditions, scratch1Reg, TR::RealRegister::NoReg, TR_GPR, cg);
-      conditions->getPostConditions()->getRegisterDependency(4)->setExcludeGPR0();
-      TR::addDependency(conditions, scratch2Reg, TR::RealRegister::NoReg, TR_GPR, cg);
-      // This is necessary only for testCastClassIsSuper
-      if (testCastClassIsSuper)
-         {
-         conditions->getPostConditions()->getRegisterDependency(5)->setExcludeGPR0();
-         }
-      }
-
-   if (testCache)
-      {
-      // The cached value could have been from a previously successful checkcast or instanceof.
-      // An answer of 0 in the low order bit indicates 'success' (the cast or instanceof was successful).
-      // An answer of 1 in the lower order bit indicates 'failure' (the cast would have thrown an exception, instanceof would have been unsuccessful)
-      // Because of this, we can just do a simple load and compare of the 2 class pointers. If it succeeds, the low order bit
-      // must be off (success) from a previous checkcast or instanceof. If the low order bit is on, it is guaranteed not to
-      // compare and we will take the slow path.
-      // Generate inline test for checkcast
-
-      callForInlineLabel = generateLabelSymbol(cg);
-      if (outlinedSlowPath)
-         {
-         genInlineTest(node, castClassAddr, validGuessClassArray, numberOfValidGuessClasses, objClassReg, NULL, cndReg, scratch1Reg, scratch2Reg, true, false, helperReturnOOLLabel,
-               helperReturnOOLLabel, helperReturnOOLLabel, callForInlineLabel, testCastClassIsSuper, NULL, cg);
-         }
-      else
-         {
-         genInlineTest(node, castClassAddr, validGuessClassArray, numberOfValidGuessClasses, objClassReg, NULL, cndReg, scratch1Reg, scratch2Reg, true, false, doneLabel, doneLabel,
-               doneLabel, callForInlineLabel, testCastClassIsSuper, NULL, cg);
-         }
-      }
-
-   if (testCastClassIsSuper)
-      {
-      int32_t castClassDepth = castClassSymRef->classDepth(comp);
-      genTestIsSuper(node, objClassReg, castClassReg, cndReg, scratch1Reg, scratch2Reg, castClassDepth, callLabel, NULL, cg);
-      if (outlinedSlowPath)
-         {
-         gcPoint = generateDepConditionalBranchInstruction(cg, TR::InstOpCode::bne, node, callLabel, cndReg, conditions);
-         }
-      else
-         {
-         gcPoint = generateConditionalBranchInstruction(cg, TR::InstOpCode::bne, node, callLabel, cndReg);
-         }
-      }
-
-   // Just fall through
-
-   if (testCache)
-      {
-      // This is used for InterfaceCastSnippet to call the helper
-      // This solves two problems: 1- We set the GC mask here
-      //                           2- There is no guarantee in which order the snippets are created, so it is more difficult for InterfaceCastSnippet
-      //                              to know the location of the helper call snippet when it is created. Though a relocation can be used for such case.
-      generateLabelInstruction(cg, TR::InstOpCode::label, node, callForInlineLabel);
-      if (outlinedSlowPath)
-         {
-         gcPoint = generateDepLabelInstruction(cg, TR::InstOpCode::b, node, callLabel, conditions);
-         }
-      else
-         {
-         gcPoint = generateLabelInstruction(cg, TR::InstOpCode::b, node, callLabel);
-         }
-      }
-
-   if (outlinedSlowPath)
-      {
-      // Return label from VM Helper call back to OOL sequence
-      // We can not branch directly back from VM Helper to main line because
-      // there might be reg spills in the rest of the OOL sequence, these code need to be executed.
-      TR::Instruction * temp = generateDepLabelInstruction(cg, TR::InstOpCode::label, node, helperReturnOOLLabel, conditions);
-      if (debugObj)
-         {
-         debugObj->addInstructionComment(temp, "OOL checkCast VMHelper return label");
-         }
-
-      temp = generateLabelInstruction(cg, TR::InstOpCode::b, node, doneOOLLabel);
-      cg->stopUsingRegister(scratch1Reg);
-      cg->stopUsingRegister(scratch2Reg);
-
-      if (debugObj)
-         debugObj->addInstructionComment(temp, "Denotes end of OOL checkCast sequence: return to mainline");
-
-      // Done using OOL with manual code generation
-      outlinedSlowPath->swapInstructionListsWithCompilation();
-
-      temp = generateLabelInstruction(cg, TR::InstOpCode::label, node, doneOOLLabel);
-      if (debugObj)
-         debugObj->addInstructionComment(temp, "OOL checkCast return label");
-      generateDepLabelInstruction(cg, TR::InstOpCode::label, node, doneLabel, condOOL);
-      }
-   else
-      // Done
-      generateDepLabelInstruction(cg, TR::InstOpCode::label, node, doneLabel, conditions);
-
-   // One of the branches is enough to carry stackMap to the snippet
-   gcPoint->PPCNeedsGCMap(0xFFFFFFFF);
-
-   conditions->stopUsingDepRegs(cg, objReg, castClassReg);
-   cg->decReferenceCount(objNode);
-   cg->decReferenceCount(castClassNode);
-   return (NULL);
-   }
-
 TR::Register *J9::Power::TreeEvaluator::ifInstanceOfEvaluator(TR::Node *node, TR::CodeGenerator *cg)
    {
    return TR::TreeEvaluator::VMifInstanceOfEvaluator(node, cg);
@@ -5028,63 +4761,6 @@ TR::Register *J9::Power::TreeEvaluator::VMifInstanceOfEvaluator(TR::Node *node, 
 
    node->setRegister(NULL);
    return NULL;
-   }
-
-TR::Register *J9::Power::TreeEvaluator::VMinstanceOfEvaluator(TR::Node *node, TR::CodeGenerator *cg)
-   {
-   static bool newInstanceOf = feGetEnv("TR_oldInstanceOf") == NULL;
-   if (newInstanceOf)
-      return VMinstanceOfEvaluator2(node, cg);
-
-   TR_ASSERT_FATAL(!cg->comp()->compileRelocatableCode() || !cg->comp()->getOption(TR_UseSymbolValidationManager),
-      "Old checkcast and instanceof evaluators are not supported under AOT");
-
-   TR::Compilation *comp = cg->comp();
-   TR::Node *depNode;
-   int32_t depIndex;
-   int32_t numDep;
-   int32_t needResult;
-   TR::LabelSymbol *doneLabel, *res0Label, *res1Label;
-   bool branchOn1;
-   TR::Register *resultReg;
-
-   TR::SymbolReference *castClassSymRef;
-   TR::Node *castClassNode;
-   TR_OpaqueClassBlock *castClassAddr;
-   TR_OpaqueClassBlock *guessClassArray[NUM_PICS];
-
-   depIndex = 0;
-   numDep = 0;
-   depNode = NULL;
-
-   castClassNode = node->getSecondChild();
-   castClassSymRef = castClassNode->getSymbolReference();
-   castClassAddr = TR::TreeEvaluator::getCastClassAddress(castClassNode);
-   uint8_t num_PICS = TR::TreeEvaluator::interpreterProfilingInstanceOfOrCheckCastInfo(cg, node, guessClassArray);
-
-   bool testEqualClass = instanceOfOrCheckCastNeedEqualityTest(node, cg);
-   bool testCastClassIsSuper = instanceOfOrCheckCastNeedSuperTest(node, cg);
-   bool isFinalClass = (castClassSymRef == NULL) ? false : castClassSymRef->isNonArrayFinal(comp);
-   bool needsHelperCall = needHelperCall(testCastClassIsSuper, isFinalClass);
-   bool testCache = needTestCache(!comp->getOption(TR_DisableInlineCheckCast), needsHelperCall, testCastClassIsSuper, castClassAddr, num_PICS);
-
-   // these are the conditions under which resultReg is set in VMgenCoreInstanceofEvaluator
-   // needResult = testEqualClass | testCastClassIsSuper | testCache | !needsHelperCall;
-   // but we always need a result for instanceOf
-   needResult = true;
-   doneLabel = generateLabelSymbol(cg);
-
-   res0Label = doneLabel;
-   res1Label = doneLabel;
-   branchOn1 = false;
-
-   resultReg = TR::TreeEvaluator::VMgenCoreInstanceofEvaluator(node, cg, false, depIndex, numDep, depNode, needResult, needsHelperCall, testEqualClass, testCache, testCastClassIsSuper, doneLabel,
-         res0Label, res1Label, branchOn1);
-
-   if (resultReg != node->getRegister())
-      node->setRegister(resultReg);
-
-   return resultReg;
    }
 
 // genCoreInstanceofEvaluator is used by if instanceof and instanceof routines.
@@ -5539,7 +5215,7 @@ reservationLockEnter(TR::Node *node, int32_t lwOffset, TR::CodeGenerator *cg, TR
    generateLabelInstruction(cg, TR::InstOpCode::label, node, resLabel);
    generateTrg1Src1ImmInstruction(cg,TR::InstOpCode::Op_cmpli, node, cndReg, monitorReg, 0);
    generateConditionalBranchInstruction(cg, TR::InstOpCode::bne, node, reserved_checkLabel, cndReg);
-   generateTrg1ImmInstruction(cg, TR::InstOpCode::li, node, tempReg, lwOffset & 0x0000FFFF);
+   generateTrg1ImmInstruction(cg, TR::InstOpCode::li, node, tempReg, lwOffset);
    if (!isPrimitive)
       generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addi, node, valReg, metaReg, LOCK_RESERVATION_BIT | LOCK_INC_DEC_VALUE);
    generateLabelInstruction(cg, TR::InstOpCode::label, node, loopLabel);
@@ -6426,7 +6102,15 @@ static void genHeapAlloc(TR::Node *node, TR::Instruction *&iCursor, TR_OpaqueCla
                   int32_t arrayletLeafSize = TR::Compiler->om.arrayletLeafSize();
                   int32_t maxContiguousArrayletLeafSizeInBytes = arrayletLeafSize - TR::Compiler->om.sizeofReferenceAddress(); //need to add definition
                   int32_t maxArrayletSizeInElements = maxContiguousArrayletLeafSizeInBytes / elementSize;
-                  iCursor = generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::cmpi4, node, condReg, enumReg, maxArrayletSizeInElements, iCursor);
+                  if (maxArrayletSizeInElements <= UPPER_IMMED)
+                     {
+                     iCursor = generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::cmpi4, node, condReg, enumReg, maxArrayletSizeInElements, iCursor);
+                     }
+                  else
+                     {
+                     iCursor = loadConstant(cg, node, maxArrayletSizeInElements, temp1Reg, iCursor);
+                     iCursor = generateTrg1Src2Instruction(cg, TR::InstOpCode::cmp4, node, condReg, enumReg, temp1Reg, iCursor);
+                     }
                   static const char *p = feGetEnv("TR_TarokPreLeafSizeCheckVarBreak");
                   if (p)
                      generateInstruction(cg, TR::InstOpCode::bad, node);
@@ -6695,8 +6379,16 @@ static void genHeapAlloc(TR::Node *node, TR::Instruction *&iCursor, TR_OpaqueCla
          iCursor = generateTrg1ImmInstruction(cg, TR::InstOpCode::li, node, zeroReg, 0, iCursor);
          if (sizeInReg)
             {
-            iCursor = generateTrg1ImmInstruction(cg, TR::InstOpCode::lis, node, sizeReg, (allocSize >> 16) + ((allocSize & (1 << 15)) ? 1 : 0), iCursor);
-            iCursor = generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addi, node, sizeReg, sizeReg, allocSize & 0x0000FFFF, iCursor);
+            if (0x00008000 == HI_VALUE(allocSize))
+               {
+               iCursor = generateTrg1ImmInstruction(cg, TR::InstOpCode::lis, node, sizeReg, 0x7FFF, iCursor);
+               iCursor = generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addis, node, sizeReg, sizeReg, 0x1, iCursor);
+               }
+            else
+               {
+               iCursor = generateTrg1ImmInstruction(cg, TR::InstOpCode::lis, node, sizeReg, HI_VALUE(allocSize), iCursor);
+               }
+            iCursor = generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addi, node, sizeReg, sizeReg, LO_VALUE(allocSize), iCursor);
             }
 
          // Try to allocate
@@ -6814,6 +6506,7 @@ static void genInitObjectHeader(TR::Node *node, TR::Instruction *&iCursor, TR_Op
             TR_PPCTableOfConstants::setTOCSlot(offset, (int64_t)clazz);
             if (offset<LOWER_IMMED||offset>UPPER_IMMED)
                {
+               TR_ASSERT_FATAL_WITH_NODE(node, 0x00008000 != HI_VALUE(offset), "TOC offset (0x%x) is unexpectedly high. Can not encode upper 16 bits into an addis instruction.", offset);
                iCursor = generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addis, node, temp1Reg, cg->getTOCBaseRegister(), HI_VALUE(offset), iCursor);
                iCursor = generateTrg1MemInstruction(cg,TR::InstOpCode::Op_load, node, temp1Reg, new (cg->trHeapMemory()) TR::MemoryReference(temp1Reg, LO_VALUE(offset), TR::Compiler->om.sizeofReferenceAddress(), cg), iCursor);
                }
@@ -7958,7 +7651,7 @@ static bool simpleReadMonitor(TR::Node *node, TR::CodeGenerator *cg, TR::Node *o
    if (objectClassReg)
       baseReg = objectClassReg;
 
-   bool altsequence = (cg->comp()->target().cpu.id() == TR_PPCgp || cg->comp()->target().cpu.id() == TR_PPCgr) && tempMR->getBaseRegister() == objReg;
+   bool altsequence = (cg->comp()->target().cpu.is(OMR_PROCESSOR_PPC_GP) || cg->comp()->target().cpu.is(OMR_PROCESSOR_PPC_GR)) && tempMR->getBaseRegister() == objReg;
 
    TR::LabelSymbol *loopLabel, *restartLabel, *recurCheckLabel, *monExitCallLabel;
    loopLabel = generateLabelSymbol(cg);
@@ -8346,7 +8039,7 @@ TR::Register *J9::Power::TreeEvaluator::VMmonentEvaluator(TR::Node *node, TR::Co
          // following loads from executing out-of-order
          // on nstar and pulsar a sync is cheaper, while an isync is
          // cheaper on other processors
-         if (cg->comp()->target().cpu.id() == TR_PPCnstar || cg->comp()->target().cpu.id() == TR_PPCpulsar)
+         if (cg->comp()->target().cpu.is(OMR_PROCESSOR_PPC_NSTAR) || cg->comp()->target().cpu.is(OMR_PROCESSOR_PPC_PULSAR))
             generateInstruction(cg, TR::InstOpCode::sync, node);
          else
             generateInstruction(cg, TR::InstOpCode::isync, node);
@@ -8417,7 +8110,7 @@ TR::Register *J9::Power::TreeEvaluator::VMmonentEvaluator(TR::Node *node, TR::Co
          // following loads from executing out-of-order
          // on nstar and pulsar a sync is cheaper, while an isync is
          // cheaper on other processors
-         if (cg->comp()->target().cpu.id() == TR_PPCnstar || cg->comp()->target().cpu.id() == TR_PPCpulsar)
+         if (cg->comp()->target().cpu.is(OMR_PROCESSOR_PPC_NSTAR) || cg->comp()->target().cpu.is(OMR_PROCESSOR_PPC_PULSAR))
             generateInstruction(cg, TR::InstOpCode::sync, node);
          else
             generateInstruction(cg, TR::InstOpCode::isync, node);
@@ -10371,13 +10064,21 @@ static TR::Register *inlineShortReverseBytes(TR::Node *node, TR::CodeGenerator *
    else
       {
       TR::Register *srcRegister = cg->evaluate(firstChild);
-      TR::Register *tmpRegister = cg->allocateRegister();
 
-      generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tgtRegister, srcRegister, 24, 0x00000000ff);
-      generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmpRegister, srcRegister, 8, 0x000000ff00);
-      generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister, tgtRegister, tmpRegister);
+      if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P10))
+         {
+         generateTrg1Src1Instruction(cg, TR::InstOpCode::brh, node, tgtRegister, srcRegister);
+         }
+      else
+         {
+         TR::Register *tmpRegister = cg->allocateRegister();
 
-      cg->stopUsingRegister(tmpRegister);
+         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tgtRegister, srcRegister, 24, 0x00000000ff);
+         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmpRegister, srcRegister, 8, 0x000000ff00);
+         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister, tgtRegister, tmpRegister);
+
+         cg->stopUsingRegister(tmpRegister);
+         }
       cg->decReferenceCount(firstChild);
       }
 
@@ -10407,7 +10108,7 @@ static TR::Register *inlineLongReverseBytes(TR::Node *node, TR::CodeGenerator *c
       TR::Node *firstChild = node->getFirstChild();
       TR::Register *tgtRegister = cg->allocateRegister();
 
-      if (cg->comp()->target().cpu.id() >= TR_PPCp7 &&
+      if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P7) &&
           !firstChild->getRegister() &&
           firstChild->getOpCode().isMemoryReference() &&
           firstChild->getReferenceCount() == 1)
@@ -10420,37 +10121,45 @@ static TR::Register *inlineLongReverseBytes(TR::Node *node, TR::CodeGenerator *c
       else
          {
          TR::Register *srcLRegister = cg->evaluate(firstChild);
-         TR::Register *srcHRegister = cg->allocateRegister();
-         TR::Register *tgtHRegister = cg->allocateRegister();
-         TR::Register *tmp1Register = cg->allocateRegister();
-         TR::Register *tmp2Register = cg->allocateRegister();
 
-         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rldicl, node, srcHRegister, srcLRegister, 32, 0x00ffffffff);
+         if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P10))
+            {
+            generateTrg1Src1Instruction(cg, TR::InstOpCode::brd, node, tgtRegister, srcLRegister);
+            }
+         else
+            {
+            TR::Register *srcHRegister = cg->allocateRegister();
+            TR::Register *tgtHRegister = cg->allocateRegister();
+            TR::Register *tmp1Register = cg->allocateRegister();
+            TR::Register *tmp2Register = cg->allocateRegister();
 
-         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tgtRegister, srcHRegister, 8, 0x00000000ff);
-         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tgtHRegister, srcLRegister, 8, 0x00000000ff);
+            generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rldicl, node, srcHRegister, srcLRegister, 32, 0x00ffffffff);
 
-         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcHRegister, 8, 0x0000ff0000);
-         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcLRegister, 8, 0x0000ff0000);
-         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister, tgtRegister, tmp1Register);
-         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtHRegister, tgtHRegister, tmp2Register);
+            generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tgtRegister, srcHRegister, 8, 0x00000000ff);
+            generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tgtHRegister, srcLRegister, 8, 0x00000000ff);
 
-         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcHRegister, 24, 0x000000ff00);
-         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcLRegister, 24, 0x000000ff00);
-         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister, tgtRegister, tmp1Register);
-         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtHRegister, tgtHRegister, tmp2Register);
+            generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcHRegister, 8, 0x0000ff0000);
+            generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcLRegister, 8, 0x0000ff0000);
+            generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister, tgtRegister, tmp1Register);
+            generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtHRegister, tgtHRegister, tmp2Register);
 
-         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcHRegister, 24, CONSTANT64(0x00ff000000));
-         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcLRegister, 24, CONSTANT64(0x00ff000000));
-         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister, tgtRegister, tmp1Register);
-         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtHRegister, tgtHRegister, tmp2Register);
+            generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcHRegister, 24, 0x000000ff00);
+            generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcLRegister, 24, 0x000000ff00);
+            generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister, tgtRegister, tmp1Register);
+            generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtHRegister, tgtHRegister, tmp2Register);
 
-         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rldimi, node, tgtRegister, tgtHRegister, 32, CONSTANT64(0xffffffff00000000));
+            generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcHRegister, 24, CONSTANT64(0x00ff000000));
+            generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcLRegister, 24, CONSTANT64(0x00ff000000));
+            generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister, tgtRegister, tmp1Register);
+            generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtHRegister, tgtHRegister, tmp2Register);
 
-         cg->stopUsingRegister(tmp2Register);
-         cg->stopUsingRegister(tmp1Register);
-         cg->stopUsingRegister(tgtHRegister);
-         cg->stopUsingRegister(srcHRegister);
+            generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rldimi, node, tgtRegister, tgtHRegister, 32, CONSTANT64(0xffffffff00000000));
+
+            cg->stopUsingRegister(tmp2Register);
+            cg->stopUsingRegister(tmp1Register);
+            cg->stopUsingRegister(tgtHRegister);
+            cg->stopUsingRegister(srcHRegister);
+            }
          cg->decReferenceCount(firstChild);
          }
 
@@ -10463,28 +10172,36 @@ static TR::Register *inlineLongReverseBytes(TR::Node *node, TR::CodeGenerator *c
       TR::RegisterPair *tgtRegister = cg->allocateRegisterPair(cg->allocateRegister(), cg->allocateRegister());
       TR::Register *srcRegister = cg->evaluate(firstChild);
 
-      TR::Register *tmp1Register = cg->allocateRegister();
-      TR::Register *tmp2Register = cg->allocateRegister();
+      if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P10))
+         {
+         generateTrg1Src1Instruction(cg, TR::InstOpCode::brw, node, tgtRegister->getLowOrder(), srcRegister->getHighOrder());
+         generateTrg1Src1Instruction(cg, TR::InstOpCode::brw, node, tgtRegister->getHighOrder(), srcRegister->getLowOrder());
+         }
+      else
+         {
+         TR::Register *tmp1Register = cg->allocateRegister();
+         TR::Register *tmp2Register = cg->allocateRegister();
 
-      generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tgtRegister->getLowOrder(), srcRegister->getHighOrder(), 8, 0x00000000ff);
-      generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tgtRegister->getHighOrder(), srcRegister->getLowOrder(), 8, 0x00000000ff);
+         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tgtRegister->getLowOrder(), srcRegister->getHighOrder(), 8, 0x00000000ff);
+         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tgtRegister->getHighOrder(), srcRegister->getLowOrder(), 8, 0x00000000ff);
 
-      generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcRegister->getHighOrder(), 8, 0x0000ff0000);
-      generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcRegister->getLowOrder(), 8, 0x0000ff0000);
-      generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getLowOrder(), tgtRegister->getLowOrder(), tmp1Register);
-      generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getHighOrder(), tgtRegister->getHighOrder(), tmp2Register);
+         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcRegister->getHighOrder(), 8, 0x0000ff0000);
+         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcRegister->getLowOrder(), 8, 0x0000ff0000);
+         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getLowOrder(), tgtRegister->getLowOrder(), tmp1Register);
+         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getHighOrder(), tgtRegister->getHighOrder(), tmp2Register);
 
-      generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcRegister->getHighOrder(), 24, 0x000000ff00);
-      generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcRegister->getLowOrder(), 24, 0x000000ff00);
-      generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getLowOrder(), tgtRegister->getLowOrder(), tmp1Register);
-      generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getHighOrder(), tgtRegister->getHighOrder(), tmp2Register);
-      generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcRegister->getHighOrder(), 24, 0x00ff000000);
-      generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcRegister->getLowOrder(), 24, 0x00ff000000);
-      generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getLowOrder(), tgtRegister->getLowOrder(), tmp1Register);
-      generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getHighOrder(), tgtRegister->getHighOrder(), tmp2Register);
+         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcRegister->getHighOrder(), 24, 0x000000ff00);
+         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcRegister->getLowOrder(), 24, 0x000000ff00);
+         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getLowOrder(), tgtRegister->getLowOrder(), tmp1Register);
+         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getHighOrder(), tgtRegister->getHighOrder(), tmp2Register);
+         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp1Register, srcRegister->getHighOrder(), 24, 0x00ff000000);
+         generateTrg1Src1Imm2Instruction(cg, TR::InstOpCode::rlwinm, node, tmp2Register, srcRegister->getLowOrder(), 24, 0x00ff000000);
+         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getLowOrder(), tgtRegister->getLowOrder(), tmp1Register);
+         generateTrg1Src2Instruction(cg, TR::InstOpCode::OR, node, tgtRegister->getHighOrder(), tgtRegister->getHighOrder(), tmp2Register);
 
-      cg->stopUsingRegister(tmp2Register);
-      cg->stopUsingRegister(tmp1Register);
+         cg->stopUsingRegister(tmp2Register);
+         cg->stopUsingRegister(tmp1Register);
+         }
       cg->decReferenceCount(firstChild);
 
       node->setRegister(tgtRegister);
@@ -11964,8 +11681,7 @@ static void inlineArrayCopy_ICF(TR::Node *node, int64_t byteLen, TR::Register *s
    int32_t groups, residual;
 
    static bool disableLEArrayCopyInline = (feGetEnv("TR_disableLEArrayCopyInline") != NULL);
-   TR_Processor processor = cg->comp()->target().cpu.id();
-   bool supportsLEArrayCopyInline = (processor >= TR_PPCp8) && !disableLEArrayCopyInline && cg->comp()->target().cpu.isLittleEndian() && cg->comp()->target().cpu.hasFPU() && cg->comp()->target().is64Bit();
+   bool supportsLEArrayCopyInline = (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P8)) && !disableLEArrayCopyInline && cg->comp()->target().cpu.isLittleEndian() && cg->comp()->target().cpu.hasFPU() && cg->comp()->target().is64Bit();
 
    if (cg->comp()->target().is64Bit())
       {
@@ -12749,7 +12465,7 @@ J9::Power::CodeGenerator::inlineDirectCall(TR::Node *node, TR::Register *&result
          return true;
 
       case TR::java_lang_String_hashCodeImplDecompressed:
-         if (!TR::Compiler->om.canGenerateArraylets() && cg->comp()->target().cpu.id() >= TR_PPCp8 && cg->comp()->target().cpu.getPPCSupportsVSX() && !cg->comp()->compileRelocatableCode()
+         if (!TR::Compiler->om.canGenerateArraylets() && cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P8) && cg->comp()->target().cpu.supportsFeature(OMR_FEATURE_PPC_HAS_VSX) && !cg->comp()->compileRelocatableCode()
 #ifdef J9VM_OPT_JITSERVER
                && !cg->comp()->isOutOfProcessCompilation()
 #endif
@@ -12762,7 +12478,7 @@ J9::Power::CodeGenerator::inlineDirectCall(TR::Node *node, TR::Register *&result
 
       case TR::com_ibm_jit_JITHelpers_transformedEncodeUTF16Big:
       case TR::com_ibm_jit_JITHelpers_transformedEncodeUTF16Little:
-         if (cg->comp()->target().cpu.id() >= TR_PPCp7 && cg->comp()->target().cpu.getPPCSupportsVSX())
+         if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P7) && cg->comp()->target().cpu.supportsFeature(OMR_FEATURE_PPC_HAS_VSX))
             {
             resultReg = inlineEncodeUTF16(node, cg);
             return true;
@@ -13535,8 +13251,7 @@ TR::Register *J9::Power::TreeEvaluator::arraycopyEvaluator(TR::Node *node, TR::C
          int32_t groups;
 
          static bool disableLEArrayCopyInline = (feGetEnv("TR_disableLEArrayCopyInline") != NULL);
-         TR_Processor processor = cg->comp()->target().cpu.id();
-         bool supportsLEArrayCopyInline = (processor >= TR_PPCp8) &&
+         bool supportsLEArrayCopyInline = (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P8)) &&
                                           !disableLEArrayCopyInline &&
                                           cg->comp()->target().cpu.isLittleEndian() &&
                                           cg->comp()->target().cpu.hasFPU() &&
@@ -13737,9 +13452,7 @@ TR::Register *J9::Power::TreeEvaluator::arraycopyEvaluator(TR::Node *node, TR::C
    static bool disableLEArrayCopyHelper = (feGetEnv("TR_disableLEArrayCopyHelper") != NULL);
    static bool disableVSXArrayCopyInlining = (feGetEnv("TR_enableVSXArrayCopyInlining") == NULL); // Disabling due to a performance regression
 
-   TR_Processor processor = cg->comp()->target().cpu.id();
-
-   bool supportsVSX = (processor >= TR_PPCp8) && !disableVSXArrayCopy && cg->comp()->target().cpu.getPPCSupportsVSX();
+   bool supportsVSX = (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P8)) && !disableVSXArrayCopy && cg->comp()->target().cpu.supportsFeature(OMR_FEATURE_PPC_HAS_VSX);
    bool supportsLEArrayCopy = !disableLEArrayCopyHelper && cg->comp()->target().cpu.isLittleEndian() && cg->comp()->target().cpu.hasFPU();
 
 #if defined(DEBUG) || defined(PROD_WITH_ASSUMES)
@@ -13762,7 +13475,7 @@ TR::Register *J9::Power::TreeEvaluator::arraycopyEvaluator(TR::Node *node, TR::C
     */
    int32_t numDeps = 8 + 5;
 
-   if (processor >= TR_PPCp8 && supportsVSX)
+   if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P8) && supportsVSX)
       {
       vec0Reg = cg->allocateRegister(TR_VRF);
       vec1Reg = cg->allocateRegister(TR_VRF);
@@ -13790,7 +13503,7 @@ TR::Register *J9::Power::TreeEvaluator::arraycopyEvaluator(TR::Node *node, TR::C
          numDeps += 4;
          }
       }
-   else if (processor >= TR_PPCp6)
+   else if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P6))
       {
       numDeps += 4;
       }
@@ -13814,7 +13527,7 @@ TR::Register *J9::Power::TreeEvaluator::arraycopyEvaluator(TR::Node *node, TR::C
    TR::addDependency(deps, tmp3Reg, TR::RealRegister::gr0, TR_GPR, cg);
    TR::addDependency(deps, tmp4Reg, TR::RealRegister::gr11, TR_GPR, cg); // Trampoline kills gr11.
 
-   if (processor >= TR_PPCp8 && supportsVSX)
+   if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P8) && supportsVSX)
       {
       TR::addDependency(deps, vec0Reg, TR::RealRegister::vr0, TR_VRF, cg);
       TR::addDependency(deps, vec1Reg, TR::RealRegister::vr1, TR_VRF, cg);
@@ -13844,7 +13557,7 @@ TR::Register *J9::Power::TreeEvaluator::arraycopyEvaluator(TR::Node *node, TR::C
          TR::addDependency(deps, NULL, TR::RealRegister::fp11, TR_FPR, cg);
          }
       }
-   else if (processor >= TR_PPCp6)
+   else if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P6))
       {
       // stfdp arrayCopy used
       TR::addDependency(deps, NULL, TR::RealRegister::fp8, TR_FPR, cg);
@@ -13888,27 +13601,27 @@ TR::Register *J9::Power::TreeEvaluator::arraycopyEvaluator(TR::Node *node, TR::C
 
       if (node->isForwardArrayCopy())
          {
-         if (processor >= TR_PPCp8 && supportsVSX)
+         if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P8) && supportsVSX)
             {
             helper = TR_PPCforwardQuadWordArrayCopy_vsx;
             }
          else if (node->isWordElementArrayCopy())
             {
-            if (processor >= TR_PPCp6)
+            if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P6))
                helper = TR_PPCforwardWordArrayCopy_dp;
             else
                helper = TR_PPCforwardWordArrayCopy;
             }
          else if (node->isHalfWordElementArrayCopy())
             {
-            if (processor >= TR_PPCp6 )
+            if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P6))
                helper = TR_PPCforwardHalfWordArrayCopy_dp;
             else
                helper = TR_PPCforwardHalfWordArrayCopy;
             }
          else
             {
-            if (processor >= TR_PPCp6)
+            if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P6))
                helper = TR_PPCforwardArrayCopy_dp;
             else
                {
@@ -13918,27 +13631,27 @@ TR::Register *J9::Power::TreeEvaluator::arraycopyEvaluator(TR::Node *node, TR::C
          }
       else // We are not sure it is forward or we have to do backward.
          {
-         if(processor >= TR_PPCp8 && supportsVSX)
+         if(cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P8) && supportsVSX)
             {
             helper = TR_PPCquadWordArrayCopy_vsx;
             }
          else if (node->isWordElementArrayCopy())
             {
-            if (processor >= TR_PPCp6)
+            if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P6))
                helper = TR_PPCwordArrayCopy_dp;
             else
                helper = TR_PPCwordArrayCopy;
             }
          else if (node->isHalfWordElementArrayCopy())
             {
-            if (processor >= TR_PPCp6)
+            if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P6))
                helper = TR_PPChalfWordArrayCopy_dp;
             else
                helper = TR_PPChalfWordArrayCopy;
             }
          else
             {
-            if (processor >= TR_PPCp6)
+            if (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P6))
                helper = TR_PPCarrayCopy_dp;
             else
                {

@@ -37,21 +37,6 @@ namespace J9 { typedef J9::X86::CPU CPUConnector; }
 #include "compiler/env/J9CPU.hpp"
 #include "env/ProcessorInfo.hpp"
 
-namespace TR { class Compilation; }
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#define PROCESSOR_FEATURES_SIZE 3
-typedef struct TR_ProcessorFeatureFlags {
-  uint32_t featureFlags[PROCESSOR_FEATURES_SIZE];
-} TR_ProcessorFeatureFlags;
-
-#ifdef __cplusplus
-}
-#endif
-
 namespace J9
 {
 
@@ -71,16 +56,17 @@ public:
    const char * getProcessorVendorId();
    uint32_t getProcessorSignature();
 
-   bool testOSForSSESupport();
    bool hasPopulationCountInstruction();
+   bool testOSForSSESupport() { return true; }
 
-   TR_ProcessorFeatureFlags getProcessorFeatureFlags();
-   bool isCompatible(TR_Processor processorSignature, TR_ProcessorFeatureFlags processorFeatureFlags);
-
+   bool isCompatible(const OMRProcessorDesc& processorDescription);
+   OMRProcessorDesc getProcessorDescription();
    uint32_t getX86ProcessorFeatureFlags();
    uint32_t getX86ProcessorFeatureFlags2();
    uint32_t getX86ProcessorFeatureFlags8();
 
+   bool is_test(OMRProcessorArchitecture p);
+   bool supports_feature_test(uint32_t feature);
    };
 
 }

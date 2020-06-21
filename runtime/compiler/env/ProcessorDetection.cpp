@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2019 IBM Corp. and others
+ * Copyright (c) 2000, 2020 IBM Corp. and others
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -269,6 +269,20 @@ TR_Processor mapJ9Processor(J9ProcessorArchitecture j9processor)
       case PROCESSOR_PPC_P9:
          tp = TR_PPCp9;
          break;
+      case PROCESSOR_PPC_P10:
+         // P10 support is not yet well-tested, so it's currently gated behind an environment
+         // variable to prevent it from being used by accident by users who use old versions of
+         // OpenJ9 once P10 chips become available.
+         if (jitConfig)
+            {
+            static bool enableP10 = feGetEnv("TR_EnableExperimentalPower10Support");
+            tp = enableP10 ? TR_PPCp10 : TR_PPCp9;
+            }
+         else
+            {
+            tp = TR_PPCp9;
+            }
+         break;
 
       case PROCESSOR_X86_UNKNOWN:
          tp = TR_DefaultX86Processor;
@@ -465,7 +479,7 @@ bool
 TR_J9VMBase::getPPCSupportsVSXRegisters()
    {
 #if defined(TR_TARGET_POWER)
-   return TR::Compiler->target.cpu.getPPCSupportsVSX();
+   return TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_PPC_HAS_VSX);
 #else
    return false;
 #endif // TR_TARGET_POWER
@@ -514,6 +528,10 @@ int32_t TR_J9VM::getCompInfo(char *processorName, int32_t stringLength)
 
          case TR_PPCp9:
             sourceString = "PPCp9";
+            break;
+
+         case TR_PPCp10:
+            sourceString = "PPCp10";
             break;
 
          case TR_PPCpulsar:
@@ -630,47 +648,48 @@ void
 TR_J9VM::initializeProcessorType()
    {
    TR_ASSERT(_compInfo,"compInfo not defined");
+   TR::Compiler->target.cpu.applyUserOptions();
 
    if (TR::Compiler->target.cpu.isZ())
       {
 #if defined(TR_HOST_S390)
-         initializeS390ProcessorFeatures();
+      initializeS390ProcessorFeatures();
 
 #if defined(J9ZOS390)
-         // Cache whether current process is running in Supervisor State (i.e. Control Region of WAS).
-         if (!_isPSWInProblemState())
-             _compInfo->setIsInZOSSupervisorState();
+      // Cache whether current process is running in Supervisor State (i.e. Control Region of WAS).
+      if (!_isPSWInProblemState())
+         _compInfo->setIsInZOSSupervisorState();
 #endif
 #endif
 
 #ifdef TR_TARGET_S390
       // For AOT shared classes cache processor compatibility purposes, the following
       // processor settings should not be modified.
-      if (TR::Compiler->target.cpu.getSupportsArch(TR::CPU::zNext))
+      if (TR::Compiler->target.cpu.isAtLeast(OMR_PROCESSOR_S390_ZNEXT))
          {
          TR::Compiler->target.cpu.setProcessor(TR_s370gp14);
          }
-      else if (TR::Compiler->target.cpu.getSupportsArch(TR::CPU::z15))
+      else if (TR::Compiler->target.cpu.isAtLeast(OMR_PROCESSOR_S390_Z15))
          {
          TR::Compiler->target.cpu.setProcessor(TR_s370gp13);
          }
-      else if (TR::Compiler->target.cpu.getSupportsArch(TR::CPU::z14))
+      else if (TR::Compiler->target.cpu.isAtLeast(OMR_PROCESSOR_S390_Z14))
          {
          TR::Compiler->target.cpu.setProcessor(TR_s370gp12);
          }
-      else if (TR::Compiler->target.cpu.getSupportsArch(TR::CPU::z13))
+      else if (TR::Compiler->target.cpu.isAtLeast(OMR_PROCESSOR_S390_Z13))
          {
          TR::Compiler->target.cpu.setProcessor(TR_s370gp11);
          }
-      else if (TR::Compiler->target.cpu.getSupportsArch(TR::CPU::zEC12))
+      else if (TR::Compiler->target.cpu.isAtLeast(OMR_PROCESSOR_S390_ZEC12))
          {
          TR::Compiler->target.cpu.setProcessor(TR_s370gp10);
          }
-      else if (TR::Compiler->target.cpu.getSupportsArch(TR::CPU::z196))
+      else if (TR::Compiler->target.cpu.isAtLeast(OMR_PROCESSOR_S390_Z196))
          {
          TR::Compiler->target.cpu.setProcessor(TR_s370gp9);
          }
-      else if (TR::Compiler->target.cpu.getSupportsArch(TR::CPU::z10))
+      else if (TR::Compiler->target.cpu.isAtLeast(OMR_PROCESSOR_S390_Z10))
          {
          TR::Compiler->target.cpu.setProcessor(TR_s370gp8);
          }

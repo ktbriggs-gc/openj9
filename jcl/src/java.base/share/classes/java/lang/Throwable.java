@@ -1,4 +1,4 @@
-/*[INCLUDE-IF Sidecar16]*/
+/*[INCLUDE-IF Sidecar18-SE]*/
 /*******************************************************************************
  * Copyright (c) 1998, 2020 IBM Corp. and others
  *
@@ -231,8 +231,9 @@ public void setStackTrace(StackTraceElement[] trace) {
 	if (trace == null) {
 		throw new NullPointerException();
 	}
-	for (int i=0; i<trace.length; i++)	{
-		if (trace[i] == null) {
+	StackTraceElement[] localCopy = trace.clone();
+	for (int i=0; i<localCopy.length; i++)	{
+		if (localCopy[i] == null) {
 			throw new NullPointerException();
 		}
 	}
@@ -241,7 +242,7 @@ public void setStackTrace(StackTraceElement[] trace) {
 		return;
 	}
 	
-	stackTrace = (StackTraceElement[])trace.clone();
+	stackTrace = localCopy;
 }
 
 /**
@@ -283,16 +284,19 @@ private static int countDuplicates(StackTraceElement[] currentStack, StackTraceE
  * @return an array of StackTraceElement representing the stack
  */
 StackTraceElement[] getInternalStackTrace() {
-
 	if (disableWritableStackTrace) {
 		return	ZeroStackTraceElementArray;
 	}
 
-	if (stackTrace == null) {
-		stackTrace = J9VMInternals.getStackTrace(this, true);
+	StackTraceElement[] localStackTrace = stackTrace;
+	if (localStackTrace == null) {
+		// Assign the result to a local variable to avoid refetching
+		// the instance variable and any memory ordering issues
+		localStackTrace = J9VMInternals.getStackTrace(this, true);
+		stackTrace = localStackTrace;
 	} 
 	
-	return stackTrace;
+	return localStackTrace;
 }
 
 /**

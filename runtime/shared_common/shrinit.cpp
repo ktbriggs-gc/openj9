@@ -1337,7 +1337,7 @@ void
 registerStoreFilter(J9JavaVM* vm, J9ClassLoader* classloader, const char* fixedName, UDATA fixedNameSize, J9Pool** filterPoolPtr)
 {
 	PORT_ACCESS_FROM_JAVAVM(vm);
-
+	
 	Trc_SHR_Assert_ShouldHaveLocalMutex(vm->classMemorySegments->segmentMutex);
 
 	if (*filterPoolPtr == NULL) {
@@ -1403,7 +1403,6 @@ freeStoreFilterPool(J9JavaVM* vm, J9Pool* filterPool)
 
 /**
  * Find class in shared classes cache
- * THREADING: The caller must hold the VM class segment mutex
  *
  * @param [in] hookInterface  Pointer to pointer to the hook interface structure
  * @param [in] eventNum  Not used
@@ -1427,6 +1426,8 @@ hookFindSharedClass(J9HookInterface** hookInterface, UDATA eventNum, void* voidD
 	UDATA localVerboseFlags;
 	J9SharedClassConfig* sharedClassConfig = vm->sharedClassConfig;
 	bool isBootLoader = false;
+	bool releaseSegmentMutex = false;
+	omrthread_monitor_t classSegmentMutex = vm->classMemorySegments->segmentMutex;
 	IDATA* entryIndex = eventData->foundAtIndex;
 #ifdef LINUXPPC
 	U_64 compilerBugWorkaround;
@@ -1505,17 +1506,41 @@ hookFindSharedClass(J9HookInterface** hookInterface, UDATA eventNum, void* voidD
 			if (eventData->classloader == vm->systemClassLoader) {
 				isBootLoader = true;
 				pathEntryCount += 1;
+				if (0 == omrthread_monitor_owned_by_self(classSegmentMutex)) {
+					omrthread_monitor_enter(classSegmentMutex);
+					releaseSegmentMutex = true;
+				}
 				classpath = getBootstrapClasspathItem(currentThread, vm->modulesPathEntry, pathEntryCount);
+				if (releaseSegmentMutex) {
+					omrthread_monitor_exit(classSegmentMutex);
+					releaseSegmentMutex = false;
+				}
 			}
 		} else {
+			if (0 == omrthread_monitor_owned_by_self(classSegmentMutex)) {
+				omrthread_monitor_enter(classSegmentMutex);
+				releaseSegmentMutex = true;
+			}
 			classpath = getBootstrapClasspathItem(currentThread, eventData->classPathEntries, pathEntryCount);
+			if (releaseSegmentMutex) {
+				omrthread_monitor_exit(classSegmentMutex);
+				releaseSegmentMutex = false;
+			}
 		}
 	}
 
 	if (!classpath) {
 		/* No cached classpath found. Need to create a new one. */
 		if ((NULL != eventData->classPathEntries) || (eventData->classloader == vm->systemClassLoader)) {
+			if (0 == omrthread_monitor_owned_by_self(classSegmentMutex)) {
+				omrthread_monitor_enter(classSegmentMutex);
+				releaseSegmentMutex = true;
+			}
 			classpath = createClasspath(currentThread, eventData->classPathEntries, eventData->entryCount, helperID, cpType, infoFound);
+			if (releaseSegmentMutex) {
+				omrthread_monitor_exit(classSegmentMutex);
+				releaseSegmentMutex = false;
+			}
 			if (classpath == NULL) {
 				goto _done;
 			}
@@ -1537,7 +1562,15 @@ hookFindSharedClass(J9HookInterface** hookInterface, UDATA eventNum, void* voidD
 
 	if (eventData->doPreventFind) {
 		if (eventData->doPreventStore) {
+			if (0 == omrthread_monitor_owned_by_self(classSegmentMutex)) {
+				omrthread_monitor_enter(classSegmentMutex);
+				releaseSegmentMutex = true;
+			}
 			registerStoreFilter(vm, eventData->classloader, fixedName, strlen(fixedName), &(sharedClassConfig->classnameFilterPool));
+			if (releaseSegmentMutex) {
+				omrthread_monitor_exit(classSegmentMutex);
+				releaseSegmentMutex = false;
+			}
 		}
 		goto _donePostFixedClassname;
 	}
@@ -1564,7 +1597,14 @@ hookFindSharedClass(J9HookInterface** hookInterface, UDATA eventNum, void* voidD
 	}
 
 	if (eventData->doPreventStore && (NULL == eventData->result)) {
+		if (0 == omrthread_monitor_owned_by_self(classSegmentMutex)) {
+			omrthread_monitor_enter(classSegmentMutex);
+			releaseSegmentMutex = true;
+		}
 		registerStoreFilter(vm, eventData->classloader, fixedName, strlen(fixedName), &(sharedClassConfig->classnameFilterPool));
+		if (releaseSegmentMutex) {
+			omrthread_monitor_exit(classSegmentMutex);
+		}
 	}
 
 	if (localRuntimeFlags & J9SHR_RUNTIMEFLAG_ENABLE_TRACECOUNT) {
@@ -3517,6 +3557,7 @@ j9shr_init(J9JavaVM *vm, UDATA loadFlags, UDATA* nonfatal)
 
 		config->getCacheSizeBytes = j9shr_getCacheSizeBytes;
 		config->getTotalUsableCacheBytes = j9shr_getTotalUsableCacheBytes;
+		config->getSharedClassCacheMode = j9shr_getSharedClassCacheMode;
 		config->getMinMaxBytes = j9shr_getMinMaxBytes;
 		config->setMinMaxBytes = j9shr_setMinMaxBytes;
 		config->increaseUnstoredBytes = j9shr_increaseUnstoredBytes;
@@ -3949,6 +3990,30 @@ j9shr_getCacheSizeBytes(J9JavaVM *vm)
 		ret = (U_32)j9shr_getTotalUsableCacheBytes(vm);
 	}
 
+	return ret;
+}
+
+/**
+ * Determine the type of shared class cache that is enabled. Either the current default (Bootstrap Classes Only), 
+ * or user defined shared cache, enabled via "-Xshareclasses" on the command line. 
+ * 
+ * @param [in] vm Pointer to the VM structure for the JVM
+ *
+ * @return J9SharedClassCacheMode enum that indicates the Shared Class Cache that is in effect
+ * 
+ */
+J9SharedClassCacheMode
+j9shr_getSharedClassCacheMode(J9JavaVM *vm)
+{
+	J9SharedClassCacheMode ret = J9SharedClassCacheBootstrapOnly;
+	/* Only bootstrap classes are shared by default */
+	if (J9_ARE_ALL_BITS_SET(vm->sharedClassConfig->runtimeFlags, J9SHR_RUNTIMEFLAG_ENABLE_CACHEBOOTCLASSES)) {
+		if (J9_ARE_ALL_BITS_SET(vm->sharedClassConfig->runtimeFlags, J9SHR_RUNTIMEFLAG_ENABLE_CACHE_NON_BOOT_CLASSES)) {
+			ret = J9SharedClassCacheUserDefined;
+		} else {
+			ret = J9SharedClassCacheBootstrapOnly;
+		}
+	}
 	return ret;
 }
 

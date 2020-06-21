@@ -1231,7 +1231,7 @@ TR_ResolvedJ9MethodBase::isCold(TR::Compilation * comp, bool isIndirectCall, TR:
    if ((!comp->getOption(TR_DisableDFP)) &&
        (
 #ifdef TR_TARGET_S390
-       comp->target().cpu.getSupportsDecimalFloatingPointFacility() ||
+       comp->target().cpu.supportsFeature(OMR_FEATURE_S390_DFP) ||
 #endif
        comp->target().cpu.supportsDecimalFloatingPoint()) && sym != NULL)
       {
@@ -2200,7 +2200,7 @@ TR_ResolvedRelocatableJ9Method::createResolvedMethodFromJ9Method(TR::Compilation
    if (comp->getOption(TR_DisableDFP) ||
        (!(comp->target().cpu.supportsDecimalFloatingPoint()
 #ifdef TR_TARGET_S390
-       || comp->target().cpu.getSupportsDecimalFloatingPointFacility()
+       || comp->target().cpu.supportsFeature(OMR_FEATURE_S390_DFP)
 #endif
          ) ||
           !TR_J9MethodBase::isBigDecimalMethod(j9method)))
@@ -2284,6 +2284,9 @@ TR_ResolvedRelocatableJ9Method::allocateException(uint32_t numBytes, TR::Compila
    // These get updated in TR_RelocationRuntime::relocateAOTCodeAndData
    eTbl->ramMethod = NULL;
    eTbl->constantPool = NULL;
+
+   // This exception table doesn't get initialized until relocation
+   eTbl->flags |= JIT_METADATA_NOT_INITIALIZED;
 
    return (U_8 *) eTbl;
    }

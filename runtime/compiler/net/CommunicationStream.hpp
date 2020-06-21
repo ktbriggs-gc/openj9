@@ -28,6 +28,7 @@
 #include <openssl/err.h>
 #include "net/LoadSSLLibs.hpp"
 #include "net/Message.hpp"
+#include "infra/Statistics.hpp"
 
 
 namespace JITServer
@@ -43,6 +44,10 @@ class CommunicationStream
 public:
    static bool useSSL();
    static void initSSL();
+   
+#ifdef MESSAGE_SIZE_STATS
+   static TR_Stats collectMsgStat[JITServer::MessageType_ARRAYSIZE];
+#endif
 
    static void initConfigurationFlags();
 
@@ -92,7 +97,7 @@ protected:
    ClientMessage _cMsg;
 
    static const uint8_t MAJOR_NUMBER = 1;
-   static const uint16_t MINOR_NUMBER = 5;
+   static const uint16_t MINOR_NUMBER = 6;
    static const uint8_t PATCH_NUMBER = 0;
    static uint32_t CONFIGURATION_FLAGS;
 

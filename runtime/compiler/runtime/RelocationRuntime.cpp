@@ -387,8 +387,11 @@ void TR_RelocationRuntime::relocationFailureCleanup()
       {
       case (RelocationFailure):
          {
-         //remove our code cache entry
-         _codeCache->addFreeBlock(_exceptionTable);
+         /* The compiled copy of the exception table is freed
+          * in CompilationThread.cpp
+          */
+         if (!useCompiledCopy())
+            _codeCache->addFreeBlock(_exceptionTable);
          }
       case RelocationCodeCreateError:
          {
@@ -730,16 +733,8 @@ TR_RelocationRuntime::relocateMethodMetaData(UDATA codeRelocationAmount, UDATA d
       _exceptionTable->osrInfo = (void *) (((U_8 *)_exceptionTable->osrInfo) + dataRelocationAmount);
 #endif /* defined(J9VM_OPT_JITSERVER) */
 
-   #if 0
-      fprintf(stdout, "-> %p", _exceptionTable->ramMethod);
-      if (classReloAmount())
-         {
-         name = J9ROMMETHOD_NAME(J9_ROM_METHOD_FROM_RAM_METHOD(((J9ROMMethod *)_exceptionTable->ramMethod)));
-         fprintf(stdout, " (%.*s)", name->length, name->data);
-         }
-      fprintf(stdout, "\n");
-      fflush(stdout);
-   #endif
+   // Reset the uninitialized bit
+   _exceptionTable->flags &= ~JIT_METADATA_NOT_INITIALIZED;
    }
 
 
@@ -915,7 +910,7 @@ TR_SharedCacheRelocationRuntime::useDFPHardware(TR_FrontEnd *fe)
    bool isPOWERDFP = TR::Compiler->target.cpu.isPower() && TR::Compiler->target.cpu.supportsDecimalFloatingPoint();
    bool is390DFP =
 #ifdef TR_TARGET_S390
-      TR::Compiler->target.cpu.isZ() && TR::Compiler->target.cpu.getSupportsDecimalFloatingPointFacility();
+      TR::Compiler->target.cpu.isZ() && TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_DFP);
 #else
       false;
 #endif
@@ -954,7 +949,7 @@ TR_SharedCacheRelocationRuntime::checkAOTHeaderFlags(TR_AOTHeader *hdrInCache, i
    {
    bool defaultMessage = true;
 
-   if (!TR::Compiler->target.cpu.isCompatible((TR_Processor)hdrInCache->processorSignature, hdrInCache->processorFeatureFlags))
+   if (!TR::Compiler->target.cpu.isCompatible(hdrInCache->processorDescription))
       defaultMessage = generateError(J9NLS_RELOCATABLE_CODE_WRONG_HARDWARE, "AOT header validation failed: Processor incompatible.");
    if ((featureFlags & TR_FeatureFlag_sanityCheckBegin) != (hdrInCache->featureFlags & TR_FeatureFlag_sanityCheckBegin))
       defaultMessage = generateError(J9NLS_RELOCATABLE_CODE_HEADER_START_SANITY_BIT_MANGLED, "AOT header validation failed: Processor feature sanity bit mangled.");
@@ -1050,7 +1045,7 @@ TR_SharedCacheRelocationRuntime::validateAOTHeader(TR_FrontEnd *fe, J9VMThread *
          }
       else if
          (hdrInCache->featureFlags != featureFlags ||
-          !TR::Compiler->target.cpu.isCompatible((TR_Processor)hdrInCache->processorSignature, hdrInCache->processorFeatureFlags)
+          !TR::Compiler->target.cpu.isCompatible(hdrInCache->processorDescription)
          )
          {
          checkAOTHeaderFlags(hdrInCache, featureFlags);
@@ -1120,12 +1115,10 @@ TR_SharedCacheRelocationRuntime::createAOTHeader(TR_FrontEnd *fe)
       strncpy(aotHeaderVersion->vmBuildVersion, EsBuildVersionString, sizeof(EsBuildVersionString));
       strncpy(aotHeaderVersion->jitBuildVersion, TR_BUILD_NAME, std::min(strlen(TR_BUILD_NAME), sizeof(aotHeaderVersion->jitBuildVersion)));
 
-      aotHeader->processorSignature = TR::Compiler->target.cpu.id();
       aotHeader->gcPolicyFlag = javaVM()->memoryManagerFunctions->j9gc_modron_getWriteBarrierType(javaVM());
       aotHeader->lockwordOptionHashValue = getCurrentLockwordOptionHashValue(javaVM());
       aotHeader->compressedPointerShift = javaVM()->memoryManagerFunctions->j9gc_objaccess_compressedPointersShift(javaVM()->internalVMFunctions->currentVMThread(javaVM()));
-
-      aotHeader->processorFeatureFlags = TR::Compiler->target.cpu.getProcessorFeatureFlags();
+      aotHeader->processorDescription = TR::Compiler->target.cpu.getProcessorDescription();
 
       // Set up other feature flags
       aotHeader->featureFlags = generateFeatureFlags(fe);
@@ -1236,7 +1229,7 @@ TR_SharedCacheRelocationRuntime::generateFeatureFlags(TR_FrontEnd *fe)
       featureFlags |= TR_FeatureFlag_HCREnabled;
 
 #ifdef TR_TARGET_S390
-   if (TR::Compiler->target.cpu.getSupportsVectorFacility())
+   if (TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_VECTOR_FACILITY))
       featureFlags |= TR_FeatureFlag_SIMDEnabled;
 #endif
 
@@ -1245,7 +1238,7 @@ TR_SharedCacheRelocationRuntime::generateFeatureFlags(TR_FrontEnd *fe)
       featureFlags |= TR_FeatureFlag_ConcurrentScavenge;
 
 #ifdef TR_TARGET_S390
-      if (!TR::Compiler->target.cpu.getSupportsGuardedStorageFacility())
+      if (!TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_GUARDED_STORAGE))
          featureFlags |= TR_FeatureFlag_SoftwareReadBarrier;
 #endif
       }

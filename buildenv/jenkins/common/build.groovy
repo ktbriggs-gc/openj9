@@ -29,9 +29,11 @@ def get_source() {
         OPENJ9_REPO_OPTION = (OPENJ9_REPO != "") ? "-openj9-repo=${OPENJ9_REPO}" : ""
         OPENJ9_BRANCH_OPTION = (OPENJ9_BRANCH != "") ? "-openj9-branch=${OPENJ9_BRANCH}" : ""
         OPENJ9_SHA_OPTION = (OPENJ9_SHA != "") ? "-openj9-sha=${OPENJ9_SHA}" : ""
+        OPENJ9_REFERENCE = "-openj9-reference=${OPENJDK_REFERENCE_REPO}"
         OMR_REPO_OPTION = (OMR_REPO != "") ? "-omr-repo=${OMR_REPO}" : ""
         OMR_BRANCH_OPTION = (OMR_BRANCH != "")? "-omr-branch=${OMR_BRANCH}" : ""
         OMR_SHA_OPTION = (OMR_SHA != "") ? "-omr-sha=${OMR_SHA}" : ""
+        OMR_REFERENCE = "-omr-reference=${OPENJDK_REFERENCE_REPO}"
 
         // use sshagent with Jenkins credentials ID for all platforms except zOS
         // on zOS use the user's ssh key
@@ -91,7 +93,7 @@ def get_sources() {
         checkout_pullrequest()
     } else {
         sh "git checkout ${OPENJDK_SHA}"
-        sh "bash ./get_source.sh ${EXTRA_GETSOURCE_OPTIONS} ${OPENJ9_REPO_OPTION} ${OPENJ9_BRANCH_OPTION} ${OPENJ9_SHA_OPTION} ${OMR_REPO_OPTION} ${OMR_BRANCH_OPTION} ${OMR_SHA_OPTION}"
+        sh "bash ./get_source.sh ${EXTRA_GETSOURCE_OPTIONS} ${OPENJ9_REPO_OPTION} ${OPENJ9_BRANCH_OPTION} ${OPENJ9_SHA_OPTION} ${OPENJ9_REFERENCE} ${OMR_REPO_OPTION} ${OMR_BRANCH_OPTION} ${OMR_SHA_OPTION} ${OMR_REFERENCE}"
     }
 }
 
@@ -198,7 +200,7 @@ def checkout_pullrequest() {
         checkout_pullrequest(OPENJDK_PR, "ibmruntimes/openj9-openjdk-jdk${JDK_REPO_SUFFIX}")
     }
 
-    sh "bash ./get_source.sh ${EXTRA_GETSOURCE_OPTIONS} ${OPENJ9_REPO_OPTION} ${OPENJ9_BRANCH_OPTION} ${OPENJ9_SHA_OPTION} ${OMR_REPO_OPTION} ${OMR_BRANCH_OPTION} ${OMR_SHA_OPTION}"
+    sh "bash ./get_source.sh ${EXTRA_GETSOURCE_OPTIONS} ${OPENJ9_REPO_OPTION} ${OPENJ9_BRANCH_OPTION} ${OPENJ9_SHA_OPTION} ${OPENJ9_REFERENCE} ${OMR_REPO_OPTION} ${OMR_BRANCH_OPTION} ${OMR_SHA_OPTION} ${OMR_REFERENCE}"
 
     // Checkout dependent PRs, if any were specified
     if (openj9_bool) {
@@ -314,6 +316,7 @@ def archive_sdk() {
             }
             if (params.ARCHIVE_JAVADOC) {
                 def javadocDir = "docs"
+                def javadocOpenJ9OnlyDir = "openj9-docs"
                 def extractDir = "build/${RELEASE}/images/"
                 if (SDK_VERSION == "8") {
                     extractDir = "build/${RELEASE}/"
@@ -324,6 +327,14 @@ def archive_sdk() {
                         sh "pax -wvzf ${JAVADOC_FILENAME} ${extractDir}${javadocDir}"
                     } else {
                         sh "tar -C ${extractDir} -zcvf ${JAVADOC_FILENAME} ${javadocDir}"
+                    }
+                }
+                if (fileExists("${extractDir}${javadocOpenJ9OnlyDir}")) {
+                    if (SPEC.contains('zos')) {
+                        // Note: to preserve the files ACLs set _OS390_USTAR=Y env variable (see variable files)
+                        sh "pax -wvzf ${JAVADOC_OPENJ9_ONLY_FILENAME} ${extractDir}${javadocOpenJ9OnlyDir}"
+                    } else {
+                        sh "tar -C ${extractDir} -zcvf ${JAVADOC_OPENJ9_ONLY_FILENAME} ${javadocOpenJ9OnlyDir}"
                     }
                 }
             }
@@ -346,6 +357,10 @@ def archive_sdk() {
                                        "target": "${ARTIFACTORY_CONFIG['uploadDir']}",
                                        "props": "build.buildIdentifier=${BUILD_IDENTIFIER}"]
                     specs.add(javadocSpec)
+                    def javadocOpenJ9OnlySpec = ["pattern": "${OPENJDK_CLONE_DIR}/${JAVADOC_OPENJ9_ONLY_FILENAME}",
+                                                 "target": "${ARTIFACTORY_CONFIG['uploadDir']}",
+                                                 "props": "build.buildIdentifier=${BUILD_IDENTIFIER}"]
+                    specs.add(javadocOpenJ9OnlySpec)
                 }
                 def uploadFiles = [files : specs]
                 def uploadSpec = JsonOutput.toJson(uploadFiles)
@@ -368,7 +383,12 @@ def archive_sdk() {
                     if (fileExists("${JAVADOC_FILENAME}")) {
                         JAVADOC_LIB_URL = "${ARTIFACTORY_CONFIG[ARTIFACTORY_CONFIG['defaultGeo']]['url']}/${ARTIFACTORY_CONFIG['uploadDir']}${JAVADOC_FILENAME}"
                         currentBuild.description += "<br><a href=${JAVADOC_LIB_URL}>${JAVADOC_FILENAME}</a>"
-                        echo "Javadoc:'${JAVADOC_LIB_URL}"
+                        echo "Javadoc:'${JAVADOC_LIB_URL}'"
+                    }
+                    if (fileExists("${JAVADOC_OPENJ9_ONLY_FILENAME}")) {
+                        JAVADOC_OPENJ9_ONLY_LIB_URL = "${ARTIFACTORY_CONFIG[ARTIFACTORY_CONFIG['defaultGeo']]['url']}/${ARTIFACTORY_CONFIG['uploadDir']}${JAVADOC_OPENJ9_ONLY_FILENAME}"
+                        currentBuild.description += "<br><a href=${JAVADOC_OPENJ9_ONLY_LIB_URL}>${JAVADOC_OPENJ9_ONLY_FILENAME}</a>"
+                        echo "Javadoc (OpenJ9 extensions only):'${JAVADOC_OPENJ9_ONLY_LIB_URL}'"
                     }
                 }
                 echo "CUSTOMIZED_SDK_URL:'${CUSTOMIZED_SDK_URL}'"
@@ -377,6 +397,7 @@ def archive_sdk() {
                 def ARTIFACTS_FILES = "**/${SDK_FILENAME},**/${TEST_FILENAME},**/${DEBUG_IMAGE_FILENAME}"
                 if (params.ARCHIVE_JAVADOC) {
                     ARTIFACTS_FILES += ",**/${JAVADOC_FILENAME}"
+                    ARTIFACTS_FILES += ",**/${JAVADOC_OPENJ9_ONLY_FILENAME}"
                 }
                 archiveArtifacts artifacts: ARTIFACTS_FILES, fingerprint: false, onlyIfSuccessful: true
             }

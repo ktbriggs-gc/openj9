@@ -505,7 +505,7 @@ handleServerMessage(JITServer::ClientStream *client, TR_J9VM *fe, JITServer::Mes
          vmInfo._readBarrierType = TR::Compiler->om.readBarrierType();
          vmInfo._writeBarrierType = TR::Compiler->om.writeBarrierType();
          vmInfo._compressObjectReferences = TR::Compiler->om.compressObjectReferences();
-         vmInfo._processorFeatureFlags = TR::Compiler->target.cpu.getProcessorFeatureFlags();
+         vmInfo._processorDescription = TR::Compiler->target.cpu.getProcessorDescription();
          vmInfo._invokeWithArgumentsHelperMethod = J9VMJAVALANGINVOKEMETHODHANDLE_INVOKEWITHARGUMENTSHELPER_METHOD(fe->getJ9JITConfig()->javaVM);
          vmInfo._noTypeInvokeExactThunkHelper = comp->getSymRefTab()->findOrCreateRuntimeHelper(TR_icallVMprJavaSendInvokeExact0, false, false, false)->getMethodAddress();
          vmInfo._int64InvokeExactThunkHelper = comp->getSymRefTab()->findOrCreateRuntimeHelper(TR_icallVMprJavaSendInvokeExactJ, false, false, false)->getMethodAddress();
@@ -2098,6 +2098,14 @@ handleServerMessage(JITServer::ClientStream *client, TR_J9VM *fe, JITServer::Mes
          client->write(response, std::string((char *) classRefName, classRefLen));
          }
          break;
+      case MessageType::ClassEnv_isClassRefValueType:
+         {
+         auto recv = client->getRecvData<TR_OpaqueClassBlock *, int32_t>();
+         auto clazz = std::get<0>(recv);
+         auto cpIndex = std::get<1>(recv);
+         client->write(response, TR::Compiler->cls.isClassRefValueType(comp, clazz, cpIndex));
+         }
+         break;
       case MessageType::SharedCache_getClassChainOffsetInSharedCache:
          {
          auto j9class = std::get<0>(client->getRecvData<TR_OpaqueClassBlock *>());
@@ -2934,9 +2942,10 @@ remoteCompilationEnd(
          if (TR::Options::getVerboseOption(TR_VerboseJITServer))
             {
             TR_VerboseLog::writeLineLocked(TR_Vlog_JITServer,
-                                           "JITServer Relocation failure: %d",
+                                           "JITClient: Relocation failure: %d",
                                            compInfoPT->reloRuntime()->returnCode());
             }
+         Trc_JITServerRelocationFailure(vmThread, compInfoPT->reloRuntime()->returnCode());
          // Relocation failed, fail compilation
          entry->_compErrCode = compInfoPT->reloRuntime()->returnCode();
          comp->failCompilation<J9::AOTRelocationFailed>("Failed to relocate");
@@ -2974,11 +2983,14 @@ remoteCompilationEnd(
             {
             TR_VerboseLog::writeLineLocked(
                TR_Vlog_JITServer,
-               "Applying JITServer remote AOT relocations to newly AOT compiled body for %s @ %s",
+               "JITClient: Applying remote AOT relocations to newly AOT compiled body for %s @ %s",
                comp->signature(),
                comp->getHotnessName()
                );
             }
+
+         Trc_JITServerApplyRemoteAOTRelocation(vmThread, comp->signature(), comp->getHotnessName());
+
          try
             {
             // Need to get a non-shared cache VM to relocate
@@ -3020,9 +3032,12 @@ remoteCompilationEnd(
             if (TR::Options::getVerboseOption(TR_VerboseJITServer))
                {
                TR_VerboseLog::writeLineLocked(TR_Vlog_JITServer,
-                                              "JITServer Relocation failure: %d",
+                                              "JITClient: AOT Relocation failure: %d",
                                               compInfoPT->reloRuntime()->returnCode());
                }
+
+            Trc_JITServerRelocationAOTFailure(vmThread, compInfoPT->reloRuntime()->returnCode());
+
             // Relocation failed, fail compilation
             // attempt to recompile in non-AOT mode
             entry->_doNotUseAotCodeFromSharedCache = true;
@@ -3366,8 +3381,9 @@ remoteCompile(
 #endif
                if (TR::Options::isAnyVerboseOptionSet(TR_VerboseJITServer, TR_VerboseCompileEnd, TR_VerbosePerformance, TR_VerboseCompFailure))
                   {
-                  TR_VerboseLog::writeLineLocked(TR_Vlog_FAILURE, "Failure while committing chtable for %s", compiler->signature());
+                  TR_VerboseLog::writeLineLocked(TR_Vlog_FAILURE, "JITClient: Failure while committing chtable for %s", compiler->signature());
                   }
+               Trc_JITServerCommitCHTableFailed(vmThread, compiler->signature());
                compiler->failCompilation<J9::CHTableCommitFailure>("CHTable commit failure");
                }
             }

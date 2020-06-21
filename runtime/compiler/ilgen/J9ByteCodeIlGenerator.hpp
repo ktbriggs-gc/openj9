@@ -94,6 +94,7 @@ private:
    int32_t      genGoto(int32_t);
    int32_t      genIfOneOperand(TR::ILOpCodes);
    int32_t      genIfTwoOperand(TR::ILOpCodes);
+   int32_t      genIfAcmpEqNe(TR::ILOpCodes);
    int32_t      genIfImpl(TR::ILOpCodes);
 
    /** \brief
@@ -238,6 +239,7 @@ private:
    void         handleSideEffect(TR::Node *);
    bool         valueMayBeModified(TR::Node *, TR::Node *);
    TR::Node *    genCompressedRefs(TR::Node *, bool genTT = true, int32_t isLoad = 1);
+   void         abortForUnresolvedValueTypeOp(const char* bytecodeName, const char* refType);
 
    // IlGenerator
    //

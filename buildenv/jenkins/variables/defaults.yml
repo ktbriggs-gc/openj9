@@ -36,10 +36,21 @@ openjdk:
     default:
       repoUrl: 'https://github.com/ibmruntimes/openj9-openjdk-jdk14.git'
       branch: 'openj9'
+  15:
+    default:
+      repoUrl: 'https://github.com/ibmruntimes/openj9-openjdk-jdk15.git'
+      branch: 'openj9'
   next:
     default:
       repoUrl: 'https://github.com/ibmruntimes/openj9-openjdk-jdk.git'
       branch: 'openj9'
+# OpenJ9 & OMR Repos (used by ref repo updater)
+openj9:
+  default:
+    repoUrl: 'https://github.com/eclipse/openj9.git'
+omr:
+  default:
+    repoUrl: 'https://github.com/eclipse/omr.git'
 # AdoptOpenJDK Testing repository
 adoptopenjdk:
   default:
@@ -89,6 +100,7 @@ build_discarder:
     OpenJDK8: 10
     OpenJDK11: 10
     OpenJDK14: 10
+    OpenJDK15: 10
     OpenJDK: 10
     Personal: 50
     Pipeline: 100
@@ -115,8 +127,6 @@ cmake:
   extra_make_options: 'EXTRA_CMAKE_ARGS="-DOMR_WARNINGS_AS_ERRORS=FALSE"'
   excluded_tests:
     8:
-      - special.system
-    11:
       - special.system
 #========================================#
 # Build with uma
@@ -177,6 +187,7 @@ ppc64le_linux:
     8: '/usr/lib/jvm/adoptojdk-java-80'
     11: '/usr/lib/jvm/adoptojdk-java-11'
     14: '/usr/lib/jvm/adoptojdk-java-14'
+    15: '/usr/lib/jvm/adoptojdk-java-14'
     next: '/usr/lib/jvm/adoptojdk-java-14'
   release:
     all: 'linux-ppc64le-server-release'
@@ -194,6 +205,11 @@ ppc64le_linux:
 ppc64le_linux_cm:
   extends: ['ppc64le_linux', 'cmake']
 #========================================#
+# Linux PPCLE 64bits Compressed Pointers /w uma
+#========================================#
+ppc64le_linux_uma:
+  extends: ['ppc64le_linux', 'uma']
+#========================================#
 # Linux PPCLE 64bits Large Heap
 #========================================#
 ppc64le_linux_xl:
@@ -203,6 +219,16 @@ ppc64le_linux_xl:
       - special.system
     11:
       - special.system
+#========================================#
+# Linux PPCLE 64bits Large Heap /w cmake
+#========================================#
+ppc64le_linux_xl_cm:
+  extends: ['ppc64le_linux_xl', 'cmake']
+#========================================#
+# Linux PPCLE 64bits Large Heap /w uma
+#========================================#
+ppc64le_linux_xl_uma:
+  extends: ['ppc64le_linux_xl', 'uma']
 #========================================#
 # Linux PPCLE 64bits Compressed Pointers /w JITSERVER
 #========================================#
@@ -219,6 +245,7 @@ s390x_linux:
     8: '/usr/lib/jvm/adoptojdk-java-s390x-80'
     11: '/usr/lib/jvm/adoptojdk-java-11'
     14: '/usr/lib/jvm/adoptojdk-java-14'
+    15: '/usr/lib/jvm/adoptojdk-java-14'
     next: '/usr/lib/jvm/adoptojdk-java-14'
   release:
     all: 'linux-s390x-server-release'
@@ -229,6 +256,16 @@ s390x_linux:
   build_env:
     cmd: 'source /home/jenkins/set_gcc7.5.0_env'
 #========================================#
+# Linux S390 64bits Compressed Pointers /w cmake
+#========================================#
+s390x_linux_cm:
+  extends: ['s390x_linux', 'cmake']
+#========================================#
+# Linux S390 64bits Compressed Pointers /w uma
+#========================================#
+s390x_linux_uma:
+  extends: ['s390x_linux', 'uma']
+#========================================#
 # Linux S390 64bits Large Heap
 # Note: boot_jdk 8 must use an Adopt JDK8 build rather than an
 # IBM 7 for the bootJDK or compiling corba will fail to find Object.
@@ -238,6 +275,16 @@ s390x_linux_xl:
   excluded_tests:
      11:
       - special.system
+#========================================#
+# Linux S390 64bits Large Heap /w cmake
+#========================================#
+s390x_linux_xl_cm:
+  extends: ['s390x_linux_xl', 'cmake']
+#========================================#
+# Linux S390 64bits Large Heap /w uma
+#========================================#
+s390x_linux_xl_uma:
+  extends: ['s390x_linux_xl', 'uma']
 #========================================#
 # Linux S390 64bits Compressed Pointers /w JITSERVER
 #========================================#
@@ -252,6 +299,7 @@ ppc64_aix:
     8: '/opt/java7'
     11: '/opt/java11_64'
     14: '/opt/java14_64'
+    15: '/opt/java14_64'
     next: '/opt/java14_64'
   release:
     all: 'aix-ppc64-server-release'
@@ -264,12 +312,14 @@ ppc64_aix:
     8: ' --disable-ccache'
     11: '--disable-warnings-as-errors'
     14: '--disable-warnings-as-errors'
+    15: '--disable-warnings-as-errors'
     next: '--disable-warnings-as-errors'
   build_env:
     vars:
       8: 'PATH+XLC=/opt/IBM/xlC/13.1.3/bin:/opt/IBM/xlc/13.1.3/bin'
       11: 'PATH+XLC=/opt/IBM/xlC/13.1.3/bin:/opt/IBM/xlc/13.1.3/bin'
       14: 'PATH+XLC=/opt/IBM/xlC/16.1.0/bin:/opt/IBM/xlc/16.1.0/bin CC=xlclang CXX=xlclang++'
+      15: 'PATH+XLC=/opt/IBM/xlC/16.1.0/bin:/opt/IBM/xlc/16.1.0/bin CC=xlclang CXX=xlclang++'
       next: 'PATH+XLC=/opt/IBM/xlC/16.1.0/bin:/opt/IBM/xlc/16.1.0/bin CC=xlclang CXX=xlclang++'
 #========================================#
 # Linux x86 64bits Compressed Pointers
@@ -280,6 +330,7 @@ x86-64_linux:
     8: '/usr/lib/jvm/jdk-7'
     11: '/usr/lib/jvm/jdk-11'
     14: '/usr/lib/jvm/adoptojdk-java-14'
+    15: '/usr/lib/jvm/adoptojdk-java-14'
     next: '/usr/lib/jvm/adoptojdk-java-14'
   release:
     all: 'linux-x86_64-server-release'
@@ -301,9 +352,15 @@ x86-64_linux:
 x86-64_linux_cm:
   extends: ['x86-64_linux', 'cmake']
   excluded_tests:
+    8:
       - extended.functional
       - sanity.system
       - extended.system
+#========================================#
+# Linux x86 64bits Compressed Pointers /w uma
+#========================================#
+x86-64_linux_uma:
+  extends: ['x86-64_linux', 'uma']
 #========================================#
 # Linux x86 64bits Large Heap /w CMake
 #========================================#
@@ -313,6 +370,11 @@ x86-64_linux_xl_cm:
       - extended.functional
       - sanity.system
       - extended.system
+#========================================#
+# Linux x86 64bits Large Heap /w uma
+#========================================#
+x86-64_linux_xl_uma:
+  extends: ['x86-64_linux_xl', 'uma']
 #========================================#
 # Linux x86 64bits Compressed Pointers /w JITSERVER
 #========================================#
@@ -346,10 +408,30 @@ aarch64_linux:
   build_env:
     vars: 'PATH+TOOLS=/usr/local/gcc-7.5.0/bin'
 #========================================#
+# Linux Aarch 64bits Compressed Pointers /w cmake
+#========================================#
+aarch64_linux_cm:
+  extends: ['aarch64_linux', 'cmake']
+#========================================#
+# Linux Aarch 64bits Compressed Pointers /w uma
+#========================================#
+aarch64_linux_uma:
+  extends: ['aarch64_linux', 'uma']
+#========================================#
 # Linux Aarch 64bits Large Heap
 #========================================#
 aarch64_linux_xl:
   extends: ['aarch64_linux', 'largeheap']
+#========================================#
+# Linux Aarch 64bits Large Heap /w cmake
+#========================================#
+aarch64_linux_xl_cm:
+  extends: ['aarch64_linux_xl', 'cmake']
+#========================================#
+# Linux Aarch 64bits Large Heap /w uma
+#========================================#
+aarch64_linux_xl_uma:
+  extends: ['aarch64_linux_xl', 'uma']
 #========================================#
 # Windows x86 64bits Compressed Pointers
 #========================================#
@@ -359,6 +441,7 @@ x86-64_windows:
     8: '/cygdrive/c/openjdk/jdk7'
     11: '/cygdrive/c/openjdk/jdk11'
     14: '/cygdrive/c/openjdk/jdk14'
+    15: '/cygdrive/c/openjdk/jdk14'
     next: '/cygdrive/c/openjdk/jdk14'
   release:
     all: 'windows-x86_64-server-release'
@@ -370,6 +453,7 @@ x86-64_windows:
     8: '--with-freetype-include=/cygdrive/c/openjdk/freetype-2.5.3/include --with-freetype-lib=/cygdrive/c/openjdk/freetype-2.5.3/lib64 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1g-x86_64-VS2013'
     11: '--with-toolchain-version=2017 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1g-x86_64-VS2017'
     14: '--with-toolchain-version=2017 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1g-x86_64-VS2017'
+    15: '--with-toolchain-version=2017 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1g-x86_64-VS2017'
     next: '--with-toolchain-version=2017 --with-openssl=/cygdrive/c/openjdk/OpenSSL-1.1.1g-x86_64-VS2017'
   node_labels:
     build: 'ci.role.build && hw.arch.x86 && sw.os.windows'
@@ -379,10 +463,30 @@ x86-64_windows:
     11:
       - special.system
 #========================================#
+# Windows x86 64bits Compressed Pointers /w cmake
+#========================================#
+x86-64_windows_cm:
+   extends: ['x86-64_windows', 'cmake']
+#========================================#
+# Windows x86 64bits Compressed Pointers /w uma
+#========================================#
+x86-64_windows_uma:
+   extends: ['x86-64_windows', 'uma']
+#========================================#
 # Windows x86 64bits Large Heap
 #========================================#
 x86-64_windows_xl:
   extends: ['x86-64_windows', 'largeheap']
+#========================================#
+# Windows x86 64bits Large Heap /w cmake
+#========================================#
+x86-64_windows_xl_cm:
+  extends: ['x86-64_windows_xl', 'cmake']
+#========================================#
+# Windows x86 64bits Large Heap /w uma
+#========================================#
+x86-64_windows_xl_uma:
+  extends: ['x86-64_windows_xl', 'uma']
 #========================================#
 # Windows x86 32bits
 #========================================#
@@ -405,6 +509,16 @@ x86-32_windows:
     8:
       - special.system
 #========================================#
+# Windows x86 32bits /w cmake
+#========================================#
+x86-32_windows_cm:
+   extends: ['x86-32_windows', 'cmake']
+#========================================#
+# Windows x86 32bits /w uma
+#========================================#
+x86-32_windows_uma:
+   extends: ['x86-32_windows', 'uma']
+#========================================#
 # OSX x86 64bits Compressed Pointers
 #========================================#
 x86-64_mac:
@@ -413,6 +527,7 @@ x86-64_mac:
     8: '/Users/jenkins/bootjdks/adoptojdk-java-8'
     11: '/Users/jenkins/bootjdks/adoptojdk-java-11'
     14: '/Users/jenkins/bootjdks/adoptojdk-java-14'
+    15: '/Users/jenkins/bootjdks/adoptojdk-java-14'
     next: '/Users/jenkins/bootjdks/adoptojdk-java-14'
   release:
     all: 'macosx-x86_64-server-release'

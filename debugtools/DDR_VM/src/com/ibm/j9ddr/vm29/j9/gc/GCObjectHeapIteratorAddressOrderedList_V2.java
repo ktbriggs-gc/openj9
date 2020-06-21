@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2019, 2020 IBM Corp. and others
+ * Copyright (c) 1991, 2020 IBM Corp. and others
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -19,46 +19,30 @@
  *
  * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
  *******************************************************************************/
+package com.ibm.j9ddr.vm29.j9.gc;
 
-#ifndef J9_ARM64_CPU_INCL
-#define J9_ARM64_CPU_INCL
+import com.ibm.j9ddr.CorruptDataException;
+import com.ibm.j9ddr.vm29.pointer.U8Pointer;
+import com.ibm.j9ddr.vm29.pointer.generated.J9ModronThreadLocalHeapPointer;
 
-/*
- * The following #define and typedef must appear before any #includes in this file
- */
-#ifndef J9_CPU_CONNECTOR
-#define J9_CPU_CONNECTOR
-namespace J9 { namespace ARM64 { class CPU; } }
-namespace J9 { typedef J9::ARM64::CPU CPUConnector; }
-#else
-#error J9::ARM64::CPU expected to be a primary connector, but a J9 connector is already defined
-#endif
+import java.util.ArrayList;
 
-#include "compiler/env/J9CPU.hpp"
-#include "env/ProcessorInfo.hpp"
+class GCObjectHeapIteratorAddressOrderedList_V2 extends GCObjectHeapIteratorAddressOrderedList_V1 {
 
-namespace J9
-{
+	protected GCObjectHeapIteratorAddressOrderedList_V2(U8Pointer base, U8Pointer top, boolean includeLiveObjects, boolean includeDeadObjects) throws CorruptDataException
+	{
+		super(base, top, includeLiveObjects, includeDeadObjects);
+	}
 
-namespace ARM64
-{
+	@Override
+	protected U8Pointer getRealHeapTop(J9ModronThreadLocalHeapPointer threadLocalHeap, U8Pointer heapTop) throws CorruptDataException
+	{
+		return threadLocalHeap.realHeapTop();
+	}
 
-class OMR_EXTENSIBLE CPU : public J9::CPU
-   {
-protected:
-
-   CPU() : J9::CPU() {}
-   CPU(const OMRProcessorDesc& processorDescription) : J9::CPU(processorDescription) {}
-
-public:
-
-   OMRProcessorDesc getProcessorDescription();
-   bool isCompatible(const OMRProcessorDesc& processorDescription);
-
-   };
-
+	@Override
+	protected U8Pointer getRealHeapAlloc(J9ModronThreadLocalHeapPointer threadLocalHeap, U8Pointer heapAlloc) throws CorruptDataException
+	{
+		return heapAlloc;
+	}
 }
-
-}
-
-#endif

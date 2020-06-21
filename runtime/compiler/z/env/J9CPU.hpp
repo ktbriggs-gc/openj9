@@ -39,19 +39,6 @@ namespace J9 { typedef J9::Z::CPU CPUConnector; }
 #include "infra/Assert.hpp"
 #include "infra/Flags.hpp"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#define PROCESSOR_FEATURES_SIZE 1
-typedef struct TR_ProcessorFeatureFlags {
-  uint32_t featureFlags[PROCESSOR_FEATURES_SIZE];
-} TR_ProcessorFeatureFlags;
-
-#ifdef __cplusplus
-}
-#endif
-
 namespace J9
 {
 
@@ -66,7 +53,7 @@ class OMR_EXTENSIBLE CPU : public J9::CPU
    CPU(const OMRProcessorDesc& processorDescription) : J9::CPU(processorDescription) {}
 
    public:
-
+   
    static int32_t TO_PORTLIB_get390MachineId();
    static bool TO_PORTLIB_get390_supportsZNext();
    static bool TO_PORTLIB_get390_supportsZ15();
@@ -76,10 +63,13 @@ class OMR_EXTENSIBLE CPU : public J9::CPU
    static bool TO_PORTLIB_get390_supportsZGryphon();
    static bool TO_PORTLIB_get390_supportsZHelix();
 
+   void applyUserOptions();
    void initializeS390ProcessorFeatures();
+   bool isCompatible(const OMRProcessorDesc& processorDescription);
+   OMRProcessorDesc getProcessorDescription();
 
-   TR_ProcessorFeatureFlags getProcessorFeatureFlags();
-   bool isCompatible(TR_Processor processorSignature, TR_ProcessorFeatureFlags processorFeatureFlags);
+   bool is_at_least_test(OMRProcessorArchitecture p);
+   bool supports_feature_test(uint32_t feature);
    };
 
 }

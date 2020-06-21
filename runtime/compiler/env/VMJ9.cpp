@@ -1275,15 +1275,15 @@ void TR_J9VMBase::printVerboseLogHeader(TR::Options *cmdLineOptions)
    getCompInfo(processorName, size);
    TR_VerboseLog::writeLine(TR_Vlog_INFO,"Processor Information:");
    TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Platform Info:%s", processorName);
-   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports HardwareSQRT:%d", TR::Compiler->target.cpu.getSupportsHardwareSQRT());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports HardwareRound:%d", TR::Compiler->target.cpu.getSupportsHardwareRound());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports HardwareCopySign:%d", TR::Compiler->target.cpu.getSupportsHardwareCopySign());
+   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports HardwareSQRT:%d", TR::Compiler->target.cpu.isAtLeast(OMR_PROCESSOR_PPC_HW_SQRT_FIRST));
+   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports HardwareRound:%d", TR::Compiler->target.cpu.isAtLeast(OMR_PROCESSOR_PPC_HW_ROUND_FIRST));
+   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports HardwareCopySign:%d", TR::Compiler->target.cpu.isAtLeast(OMR_PROCESSOR_PPC_HW_COPY_SIGN_FIRST));
    TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports FPU:%d", TR::Compiler->target.cpu.hasFPU());
    TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports DFP:%d", TR::Compiler->target.cpu.supportsDecimalFloatingPoint());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports VMX:%d", TR::Compiler->target.cpu.getPPCSupportsVMX());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports VSX:%d", TR::Compiler->target.cpu.getPPCSupportsVSX());
+   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports VMX:%d", TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_PPC_HAS_ALTIVEC));
+   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports VSX:%d", TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_PPC_HAS_VSX));
    TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports AES:%d", TR::Compiler->target.cpu.getPPCSupportsAES());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports  TM:%d", TR::Compiler->target.cpu.getPPCSupportsTM());
+   TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Supports  TM:%d", TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_PPC_HTM));
    TR_VerboseLog::writeLine(TR_Vlog_INFO,"     Vendor:%s",vendorId);
    TR_VerboseLog::writeLine(TR_Vlog_INFO,"     numProc=%u",TR::Compiler->target.numberOfProcessors());
    TR_VerboseLog::writeLine(TR_Vlog_INFO,"");
@@ -1296,13 +1296,13 @@ void TR_J9VMBase::printVerboseLogHeader(TR::Options *cmdLineOptions)
    TR_VerboseLog::writeLine(TR_Vlog_INFO, "        Name: %s", processorName);
    TR_VerboseLog::writeLine(TR_Vlog_INFO, "      Vendor: %s", vendorId);
    TR_VerboseLog::writeLine(TR_Vlog_INFO, "     numProc: %u", TR::Compiler->target.numberOfProcessors());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO, "         DFP: %d", TR::Compiler->target.cpu.getSupportsDecimalFloatingPointFacility());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO, "         FPE: %d", TR::Compiler->target.cpu.getSupportsFloatingPointExtensionFacility());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO, "         HPR: %d", TR::Compiler->target.cpu.getSupportsHighWordFacility());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO, "          RI: %d", TR::Compiler->target.cpu.getSupportsRuntimeInstrumentationFacility());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO, "          TM: %d", TR::Compiler->target.cpu.getSupportsTransactionalMemoryFacility());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO, "          VF: %d", TR::Compiler->target.cpu.getSupportsVectorFacility());
-   TR_VerboseLog::writeLine(TR_Vlog_INFO, "          GS: %d", TR::Compiler->target.cpu.getSupportsGuardedStorageFacility());
+   TR_VerboseLog::writeLine(TR_Vlog_INFO, "         DFP: %d", TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_DFP));
+   TR_VerboseLog::writeLine(TR_Vlog_INFO, "         FPE: %d", TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_FPE));
+   TR_VerboseLog::writeLine(TR_Vlog_INFO, "         HPR: %d", TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_HIGH_WORD));
+   TR_VerboseLog::writeLine(TR_Vlog_INFO, "          RI: %d", TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_RI));
+   TR_VerboseLog::writeLine(TR_Vlog_INFO, "          TM: %d", TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_TE));
+   TR_VerboseLog::writeLine(TR_Vlog_INFO, "          VF: %d", TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_VECTOR_FACILITY));
+   TR_VerboseLog::writeLine(TR_Vlog_INFO, "          GS: %d", TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_GUARDED_STORAGE));
    TR_VerboseLog::writeLine(TR_Vlog_INFO, "");
 #endif
 #endif
@@ -2923,7 +2923,7 @@ bool TR_J9VMBase::supressInliningRecognizedInitialCallee(TR_CallSite* callsite, 
              * for java_lang_String_hashCodeImplCompressed instead of using a fallthrough.
              */
             if (!TR::Compiler->om.canGenerateArraylets() &&
-                comp->target().cpu.isPower() && comp->target().cpu.id() >= TR_PPCp8 && getPPCSupportsVSXRegisters() && !comp->compileRelocatableCode())
+                comp->target().cpu.isPower() && comp->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P8) && getPPCSupportsVSXRegisters() && !comp->compileRelocatableCode())
                   {
                   dontInlineRecognizedMethod = true;
                   break;
@@ -4019,7 +4019,7 @@ TR_J9VMBase::methodMayHaveBeenInterpreted(TR::Compilation *comp)
         !TR::Options::getAOTCmdLineOptions()->getOption(TR_DisableDFP)) &&
        (comp->target().cpu.supportsDecimalFloatingPoint()
 #ifdef TR_TARGET_S390
-       || comp->target().cpu.getSupportsDecimalFloatingPointFacility()
+       || comp->target().cpu.supportsFeature(OMR_FEATURE_S390_DFP)
 #endif
          ))
       {
@@ -8635,7 +8635,8 @@ TR_J9SharedCacheVM::supportAllocationInlining(TR::Compilation *comp, TR::Node *n
 
    if ((comp->target().cpu.isX86() ||
         comp->target().cpu.isPower() ||
-        comp->target().cpu.isZ()) &&
+        comp->target().cpu.isZ() ||
+        comp->target().cpu.isARM64()) &&
        !comp->getOption(TR_DisableAllocationInlining))
       return true;
 

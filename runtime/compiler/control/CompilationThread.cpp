@@ -41,6 +41,7 @@
 #include <time.h>
 #include "j9.h"
 #include "j9cfg.h"
+#include "j9modron.h"
 #include "j9protos.h"
 #include "vmaccess.h"
 #include "objhelp.h"
@@ -2993,15 +2994,20 @@ void TR::CompilationInfo::insertDLTRecord(J9Method *method, int32_t bcIndex, voi
    }
    }
 
-void TR::CompilationInfo::cleanDLTRecordOnUnload(J9ClassLoader *classloader)
+void TR::CompilationInfo::cleanDLTRecordOnUnload()
    {
    for (int32_t i=0; i<DLT_HASHSIZE; i++)
       {
       struct DLT_record *prev=NULL, *curr=_dltHash[i], *next;
       while (curr != NULL)
          {
+         J9Class *clazz = J9_CLASS_FROM_METHOD(curr->_method);
          next = curr->_next;
-         if (J9_CLASS_FROM_METHOD(curr->_method)->classLoader == classloader)
+
+         // Non-Anon classes will be unloaded with their classloaders, hence the class's classloader will be marked as dead.
+         // Anon Classes can be independently unloaded without their classloaders, however their classes are marked as dying.
+         if ( J9_ARE_ALL_BITS_SET(clazz->classLoader->gcFlags, J9_GC_CLASS_LOADER_DEAD)
+            || (J9CLASS_FLAGS(clazz) & J9AccClassDying) )
             {
             if (prev == NULL)
                _dltHash[i] = next;
@@ -5865,7 +5871,7 @@ void *TR::CompilationInfo::compileOnSeparateThread(J9VMThread * vmThread, TR::Il
                  ((!TR::Options::getCmdLineOptions()->getOption(TR_DisableDFP) || !TR::Options::getAOTCmdLineOptions()->getOption(TR_DisableDFP)) &&
                   (TR::Compiler->target.cpu.supportsDecimalFloatingPoint()
 #ifdef TR_TARGET_S390
-                  || TR::Compiler->target.cpu.getSupportsDecimalFloatingPointFacility()
+                  || TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_DFP)
 #endif
                   ) && TR_J9MethodBase::isBigDecimalMethod((J9Method *)method))))
                 async = false;
@@ -6900,7 +6906,7 @@ TR::CompilationInfoPerThreadBase::isMethodIneligibleForAot(J9Method *method)
       &&
       (TR::Compiler->target.cpu.supportsDecimalFloatingPoint()
 #ifdef TR_TARGET_S390
-         || TR::Compiler->target.cpu.getSupportsDecimalFloatingPointFacility()
+         || TR::Compiler->target.cpu.supportsFeature(OMR_FEATURE_S390_DFP)
 #endif
          )
       && TR_J9MethodBase::isBigDecimalMethod((J9ROMMethod *)romMethod, (J9ROMClass *)romClass)
@@ -8619,7 +8625,7 @@ TR::CompilationInfoPerThreadBase::wrappedCompile(J9PortLibrary *portLib, void * 
          if (TR::Options::getVerboseOption(TR_VerboseJITServer))
             TR_VerboseLog::writeLineLocked(TR_Vlog_JITServer, "<EARLY TRANSLATION FAILURE: compilation interrupted by JITClient>");
          that->_methodBeingCompiled->_compErrCode = compilationStreamInterrupted;
-         Trc_JITServerStreamInterrupted(vmThread, that->getCompThreadId(), __FUNCTION__, e.what());
+         Trc_JITServerStreamInterrupted(vmThread, that->getCompThreadId(), __FUNCTION__, "", "", e.what());
          }
 #endif /* defined(J9VM_OPT_JITSERVER) */
       catch (const J9::JITShutdown)
@@ -10041,6 +10047,7 @@ TR::CompilationInfo::compilationEnd(J9VMThread * vmThread, TR::IlGeneratorMethod
                TR_VerboseLog::writeLineLocked(TR_Vlog_JITServer,
                      "compThreadID=%d has failed to compile a new instance thunk", entry->_compInfoPT->getCompThreadId());
                }
+            Trc_JITServerFailedToCompileNewInstanceThunk(vmThread, entry->_compInfoPT->getCompThreadId());
             int8_t compErrCode = entry->_compErrCode;
             if (compErrCode != compilationStreamInterrupted && compErrCode != compilationStreamFailure)
                entry->_stream->writeError(compErrCode);
@@ -10091,6 +10098,7 @@ TR::CompilationInfo::compilationEnd(J9VMThread * vmThread, TR::IlGeneratorMethod
                TR_VerboseLog::writeLineLocked(TR_Vlog_JITServer,
                      "compThreadID=%d has failed to compile a DLT method", entry->_compInfoPT->getCompThreadId());
                }
+            Trc_JITServerFailedToCompileDLT(vmThread, entry->_compInfoPT->getCompThreadId());
             int8_t compErrCode = entry->_compErrCode;
             if (compErrCode != compilationStreamInterrupted && compErrCode != compilationStreamFailure)
                entry->_stream->writeError(compErrCode);
@@ -10148,6 +10156,7 @@ TR::CompilationInfo::compilationEnd(J9VMThread * vmThread, TR::IlGeneratorMethod
                TR_VerboseLog::writeLineLocked(TR_Vlog_JITServer,
                      "compThreadID=%d has failed to compile a methodHandleThunk method", entry->_compInfoPT->getCompThreadId());
                }
+            Trc_JITServerFailedToCompileMethodHandleThunk(vmThread, entry->_compInfoPT->getCompThreadId());
             int8_t compErrCode = entry->_compErrCode;
             if (compErrCode != compilationStreamInterrupted && compErrCode != compilationStreamFailure)
                entry->_stream->writeError(compErrCode);
@@ -10505,7 +10514,8 @@ TR::CompilationInfo::compilationEnd(J9VMThread * vmThread, TR::IlGeneratorMethod
                   entry->_compInfoPT->getCompThreadId(), entry->_compErrCode, comp ? comp->signature() : "");
             }
          if (vmThread)
-            Trc_JITServerFailedToCompile(vmThread, entry->_compInfoPT->getCompThreadId(), entry->_compErrCode, comp ? comp->signature() : "");
+            Trc_JITServerFailedToCompile(vmThread, entry->_compInfoPT->getCompThreadId(), entry->_compErrCode,
+                  comp ? comp->signature() : "", comp ? comp->getHotnessName() : "");
 
          static bool breakAfterFailedCompile = feGetEnv("TR_breakAfterFailedCompile") != NULL;
          if (breakAfterFailedCompile)
@@ -10538,7 +10548,8 @@ TR::CompilationInfo::compilationEnd(J9VMThread * vmThread, TR::IlGeneratorMethod
                   entry->_compInfoPT->getCompThreadId(), entry->_compErrCode, comp ? comp->signature() : "");
             }
          if (vmThread)
-            Trc_JITServerFailedToRecompile(vmThread, entry->_compInfoPT->getCompThreadId(), entry->_compErrCode, comp ? comp->signature() : "");
+            Trc_JITServerFailedToRecompile(vmThread, entry->_compInfoPT->getCompThreadId(), entry->_compErrCode,
+                  comp ? comp->signature() : "", comp ? comp->getHotnessName() : "");
 
          int8_t compErrCode = entry->_compErrCode;
          if (compErrCode != compilationStreamInterrupted && compErrCode != compilationStreamFailure)
@@ -11267,24 +11278,28 @@ TR::CompilationInfoPerThreadBase::processException(
       {
       if (TR::Options::getVerboseOption(TR_VerboseJITServer))
          TR_VerboseLog::writeLineLocked(TR_Vlog_JITServer, "compThreadID=%d JITServer StreamFailure: %s", getCompThreadId(), e.what());
+      Trc_JITServerStreamFailure(vmThread, getCompThreadId(),  __FUNCTION__, compiler->signature(), compiler->getHotnessName(), e.what());
       _methodBeingCompiled->_compErrCode = compilationStreamFailure;
       }
    catch (const JITServer::StreamInterrupted &e)
       {
       if (TR::Options::getVerboseOption(TR_VerboseJITServer))
          TR_VerboseLog::writeLineLocked(TR_Vlog_JITServer, "compThreadID=%d JITServer StreamInterrupted: %s", getCompThreadId(), e.what());
+      Trc_JITServerStreamInterrupted(vmThread, getCompThreadId(),  __FUNCTION__, compiler->signature(), compiler->getHotnessName(), e.what());
       _methodBeingCompiled->_compErrCode = compilationStreamInterrupted;
       }
    catch (const JITServer::StreamVersionIncompatible &e)
       {
       if (TR::Options::getVerboseOption(TR_VerboseJITServer))
          TR_VerboseLog::writeLineLocked(TR_Vlog_JITServer, "compThreadID=%d JITServer StreamVersionIncompatible: %s", getCompThreadId(), e.what());
+      Trc_JITServerStreamVersionIncompatible(vmThread, getCompThreadId(),  __FUNCTION__, compiler->signature(), compiler->getHotnessName(), e.what());
       _methodBeingCompiled->_compErrCode = compilationStreamVersionIncompatible;
       }
    catch (const JITServer::StreamMessageTypeMismatch &e)
       {
       if (TR::Options::getVerboseOption(TR_VerboseJITServer))
          TR_VerboseLog::writeLineLocked(TR_Vlog_JITServer, "compThreadID=%d JITServer StreamMessageTypeMismatch: %s", getCompThreadId(), e.what());
+      Trc_JITServerStreamMessageTypeMismatch(vmThread, getCompThreadId(),  __FUNCTION__, compiler->signature(), compiler->getHotnessName(), e.what());
       _methodBeingCompiled->_compErrCode = compilationStreamMessageTypeMismatch;
       }
    catch (const JITServer::ServerCompilationFailure &e)
@@ -12676,10 +12691,9 @@ J9Method_HT::HT_Entry * J9Method_HT::find(J9Method *j9method) const
    return entry;
    }
 
-
 // onClassUnloading is executed when all threads are stopped
 // so there are no synchronization issues
-void J9Method_HT::onClassUnloading(J9ClassLoader *j9classLoader)
+void J9Method_HT::onClassUnloading()
    {
    // Scan the entire DLT_HT and delete entries matching the given classloader
    // Also free invalid entries that have j9method==NULL
@@ -12689,8 +12703,12 @@ void J9Method_HT::onClassUnloading(J9ClassLoader *j9classLoader)
       HT_Entry *prev = NULL;
       while (entry)
          {
-         if (NULL == entry->_j9method
-            || J9_CLASS_FROM_METHOD(entry->_j9method)->classLoader == j9classLoader)
+         J9Class *clazz = J9_CLASS_FROM_METHOD(entry->_j9method);
+
+         // Non-Anon classes will be unloaded with their classloaders, hence the class's classloader will be marked as dead.
+         // Anon Classes can be independently unloaded without their classloaders, however their classes are marked as dying.
+         if ( J9_ARE_ALL_BITS_SET(clazz->classLoader->gcFlags, J9_GC_CLASS_LOADER_DEAD)
+            || (J9CLASS_FLAGS(clazz) & J9AccClassDying) )
             {
             HT_Entry *removed = NULL;
             if (prev)
@@ -12736,10 +12754,6 @@ bool J9Method_HT::addNewEntry(J9Method *j9method, uint64_t timestamp)
          (unsigned)getPersistentInfo()->getElapsedTime(), j9method, alreadyCompiled, added, _numEntries);
    return added;
    }
-
-
-
-
 
 bool DLTTracking::shouldIssueDLTCompilation(J9Method *j9method, int32_t numHitsInDLTBuffer)
    {

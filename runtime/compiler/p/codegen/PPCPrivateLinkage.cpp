@@ -329,7 +329,7 @@ J9::Power::PrivateLinkage::PrivateLinkage(TR::CodeGenerator *cg)
       _properties._TOCBaseRegister               = TR::RealRegister::gr16;
       // Volatile GPR (0,2-12) + FPR (0-31) + CCR (0-7) + VR (0-31)
       _properties._numberOfDependencyGPRegisters = 12 + 32 + 8 + 32;
-      _properties._offsetToFirstParm             = 0;
+      setOffsetToFirstParm(0);
       _properties._offsetToFirstLocal            = -8;
       }
    else
@@ -345,7 +345,7 @@ J9::Power::PrivateLinkage::PrivateLinkage(TR::CodeGenerator *cg)
       else
          // Volatile GPR (0,2-12) + FPR (0-31) + CCR (0-7) + VR (0-31)
          _properties._numberOfDependencyGPRegisters = 12 + 32 + 8 + 32;
-      _properties._offsetToFirstParm             = 0;
+      setOffsetToFirstParm(0);
       _properties._offsetToFirstLocal            = -4;
       }
    _properties._computedCallTargetRegister  = TR::RealRegister::gr0; // gr11 = interface, gr12 = virtual, so we need something else for computed
@@ -566,39 +566,10 @@ void J9::Power::PrivateLinkage::mapStack(TR::ResolvedMethodSymbol *method)
       }
    method->setLocalMappingCursor(stackIndex);
 
-   ListIterator<TR::ParameterSymbol> parameterIterator(&method->getParameterList());
-   TR::ParameterSymbol              *parmCursor = parameterIterator.getFirst();
-   int32_t                          offsetToFirstParm = linkage.getOffsetToFirstParm();
-   if (linkage.getRightToLeft())
-      {
-      while (parmCursor != NULL)
-         {
-         parmCursor->setParameterOffset(parmCursor->getParameterOffset() + offsetToFirstParm);
-         parmCursor = parameterIterator.getNext();
-         }
-      }
-   else
-      {
-      uint32_t sizeOfParameterArea = method->getNumParameterSlots() * TR::Compiler->om.sizeofReferenceAddress();
-      while (parmCursor != NULL)
-         {
-         if (comp()->target().is64Bit() &&
-             parmCursor->getDataType() != TR::Address)
-            parmCursor->setParameterOffset(sizeOfParameterArea -
-                                        parmCursor->getParameterOffset() -
-                                        parmCursor->getSize()*2 +
-                                        offsetToFirstParm);
-         else
-            parmCursor->setParameterOffset(sizeOfParameterArea -
-                                        parmCursor->getParameterOffset() -
-                                        parmCursor->getSize() +
-                                        offsetToFirstParm);
-         parmCursor = parameterIterator.getNext();
-         }
-      }
+   mapIncomingParms(method);
 
    atlas->setLocalBaseOffset(lowGCOffset - firstLocalOffset);
-   atlas->setParmBaseOffset(atlas->getParmBaseOffset() + offsetToFirstParm - firstLocalOffset);
+   atlas->setParmBaseOffset(atlas->getParmBaseOffset() + getOffsetToFirstParm() - firstLocalOffset);
    }
 
 void J9::Power::PrivateLinkage::mapSingleAutomatic(TR::AutomaticSymbol *p, uint32_t &stackIndex)
@@ -723,7 +694,7 @@ static TR::Instruction *unrollPrologueInitLoop(TR::CodeGenerator *cg, TR::Node *
 
    static bool disableVSXMemInit = (feGetEnv("TR_disableVSXMemInit") != NULL); //Disable toggle incase we break in production.
    bool use8Bytes                = ((cg->is64BitProcessor() && TR::Compiler->om.sizeofReferenceAddress() == 4) || TR::Compiler->om.sizeofReferenceAddress() == 8);
-   bool useVectorStores          = (cg->comp()->target().cpu.id() >= TR_PPCp8 && cg->comp()->target().cpu.getPPCSupportsVSX() && !disableVSXMemInit);
+   bool useVectorStores          = (cg->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P8) && cg->comp()->target().cpu.supportsFeature(OMR_FEATURE_PPC_HAS_VSX) && !disableVSXMemInit);
 
    if (useVectorStores)
       {
@@ -736,6 +707,7 @@ static TR::Instruction *unrollPrologueInitLoop(TR::CodeGenerator *cg, TR::Node *
          int32_t loopIterations = wordsToUnroll / wordsUnrolledPerIteration;
          wordsToUnroll = wordsToUnroll % wordsUnrolledPerIteration;
 
+         TR_ASSERT_FATAL( initSlotOffset <= UPPER_IMMED, "initSlotOffset (%d) is too big to fit in a signed immediate field", initSlotOffset);
          cursor = generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addi, node, gr12, baseInitReg, initSlotOffset, cursor);
          baseInitReg = gr12;
          initSlotOffset = 0;
@@ -859,6 +831,7 @@ static int32_t calculateFrameSize(TR::RealRegister::RegNum &intSavedFirst,
    {
    TR::Compilation * comp = cg->comp();
    TR::Machine *machine = cg->machine();
+   TR::Linkage* linkage = cg->getLinkage(TR_Private);
    const TR::PPCLinkageProperties& properties = cg->getProperties();
    int32_t                    firstLocalOffset = properties.getOffsetToFirstLocal();
    int32_t                    registerSaveDescription = 0;
@@ -875,11 +848,11 @@ static int32_t calculateFrameSize(TR::RealRegister::RegNum &intSavedFirst,
 
    if (0 && cg->comp()->target().is64Bit())
       {
-      argSize = (cg->getLargestOutgoingArgSize() * 2) + properties.getOffsetToFirstParm();
+      argSize = (cg->getLargestOutgoingArgSize() * 2) + linkage->getOffsetToFirstParm();
       }
    else
       {
-      argSize = cg->getLargestOutgoingArgSize() + properties.getOffsetToFirstParm();
+      argSize = cg->getLargestOutgoingArgSize() + linkage->getOffsetToFirstParm();
       }
 
    while (intSavedFirst<=TR::RealRegister::LastGPR && !machine->getRealRegister(intSavedFirst)->getHasBeenAssignedInMethod())
@@ -1057,7 +1030,7 @@ void J9::Power::PrivateLinkage::createPrologue(TR::Instruction *cursor)
       TR::LabelSymbol *reStartLabel = generateLabelSymbol(cg());
 
       // Branch to StackOverflow snippet if javaSP > stack limit
-      if (cg()->comp()->target().cpu.id() >= TR_PPCgp)
+      if (cg()->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_GP))
          // use PPC AS branch hint
          cursor = generateConditionalBranchInstruction(cg(), TR::InstOpCode::ble, PPCOpProp_BranchUnlikely, firstNode, snippetLabel, cr0, cursor);
       else
@@ -1126,9 +1099,21 @@ void J9::Power::PrivateLinkage::createPrologue(TR::Instruction *cursor)
                   residualSize -= TR::Compiler->om.sizeofReferenceAddress();
                   initBottomOffset -= TR::Compiler->om.sizeofReferenceAddress();
                   }
+
                if (initBottomOffset < LOWER_IMMED)
-                  cursor = generateTrg1Src1ImmInstruction(cg(), TR::InstOpCode::addis, firstNode, gr12, gr12, HI_VALUE(initBottomOffset), cursor);
-               if (initBottomOffset != 0)
+                  {
+                  if (0x00008000 == HI_VALUE(initBottomOffset))
+                     {
+                     cursor = generateTrg1Src1ImmInstruction(cg(), TR::InstOpCode::addis, firstNode, gr12, gr12, 0x7FFF, cursor);
+                     cursor = generateTrg1Src1ImmInstruction(cg(), TR::InstOpCode::addis, firstNode, gr12, gr12, 0x1, cursor);
+                     }
+                  else
+                     {
+                     cursor = generateTrg1Src1ImmInstruction(cg(), TR::InstOpCode::addis, firstNode, gr12, gr12, HI_VALUE(initBottomOffset), cursor);
+                     }
+                  }
+
+               if (initBottomOffset & 0xFFFF)
                   cursor = generateTrg1Src1ImmInstruction(cg(), TR::InstOpCode::addi2, firstNode, gr12, gr12, LO_VALUE(initBottomOffset), cursor);
                }
             else
@@ -1341,11 +1326,11 @@ void J9::Power::PrivateLinkage::createEpilogue(TR::Instruction *cursor)
 
    if (0 && cg()->comp()->target().is64Bit())
       {
-      saveSize = (cg()->getLargestOutgoingArgSize() * 2) + properties.getOffsetToFirstParm();
+      saveSize = (cg()->getLargestOutgoingArgSize() * 2) + getOffsetToFirstParm();
       }
    else
       {
-      saveSize = cg()->getLargestOutgoingArgSize() + properties.getOffsetToFirstParm();
+      saveSize = cg()->getLargestOutgoingArgSize() + getOffsetToFirstParm();
       }
 
    while (savedFirst<=TR::RealRegister::LastGPR && !machine->getRealRegister(savedFirst)->getHasBeenAssignedInMethod())
@@ -1409,7 +1394,7 @@ int32_t J9::Power::PrivateLinkage::buildPrivateLinkageArgs(TR::Node             
    TR::PPCMemoryArgument           *pushToMemory = NULL;
    TR::Register                    *tempRegister;
    int32_t                          argIndex = 0, memArgs = 0, from, to, step;
-   int32_t                          argSize = -properties.getOffsetToFirstParm(), totalSize = 0;
+   int32_t                          argSize = -getOffsetToFirstParm(), totalSize = 0;
    uint32_t                         numIntegerArgs = 0;
    uint32_t                         numFloatArgs = 0;
    uint32_t                         firstExplicitArg = 0;
@@ -2090,9 +2075,9 @@ static void buildVirtualCall(TR::CodeGenerator *cg, TR::Node *callNode, TR::Regi
    // DO NOT MODIFY without also changing Recompilation.s!!
    if (offset < LOWER_IMMED || offset > UPPER_IMMED)
       {
-      generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addis, callNode, gr12, vftReg,
-                                     (offset>>16)+((offset & (1<<15))?1:0) & 0x0000ffff);
-      generateTrg1MemInstruction(cg,TR::InstOpCode::Op_load, callNode, gr12, new (cg->trHeapMemory()) TR::MemoryReference(gr12, ((offset & 0x0000ffff)<<16)>>16, TR::Compiler->om.sizeofReferenceAddress(), cg));
+      TR_ASSERT_FATAL_WITH_NODE(callNode, 0x00008000 != HI_VALUE(offset), "offset (0x%x) is unexpectedly high. Can not encode upper 16 bits into an addis instruction.", offset);
+      generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addis, callNode, gr12, vftReg, HI_VALUE(offset));
+      generateTrg1MemInstruction(cg,TR::InstOpCode::Op_load, callNode, gr12, new (cg->trHeapMemory()) TR::MemoryReference(gr12, LO_VALUE(offset), TR::Compiler->om.sizeofReferenceAddress(), cg));
       }
    else
       {
@@ -2120,6 +2105,7 @@ static void buildInterfaceCall(TR::CodeGenerator *cg, TR::Node *callNode, TR::Re
          beginIndex *= TR::Compiler->om.sizeofReferenceAddress();
          if (beginIndex < LOWER_IMMED || beginIndex > UPPER_IMMED)
             {
+            TR_ASSERT_FATAL_WITH_NODE(callNode, 0x00008000 != HI_VALUE(beginIndex), "TOC offset (0x%x) is unexpectedly high. Can not encode upper 16 bits into an addis instruction.", beginIndex);
             generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::addis, callNode, gr12, cg->getTOCBaseRegister(), HI_VALUE(beginIndex));
             generateTrg1MemInstruction(cg,TR::InstOpCode::Op_load, callNode, gr12, new (cg->trHeapMemory()) TR::MemoryReference(gr12, LO_VALUE(beginIndex), TR::Compiler->om.sizeofReferenceAddress(), cg));
             }
@@ -2621,7 +2607,7 @@ void inlineCharacterIsMethod(TR::Node *node, TR::MethodSymbol* methodSymbol, TR:
          generateTrg1ImmInstruction(cg, TR::InstOpCode::lis, node, rangeReg, 0x5A41);
          generateTrg1Src1ImmInstruction(cg, TR::InstOpCode::ori, node, rangeReg, rangeReg, 0xD6C0);
          generateTrg1Src2ImmInstruction(cg, TR::InstOpCode::cmprb, node, cnd1Reg, srcReg, rangeReg, 1);
-         generateTrg1ImmInstruction(cg, TR::InstOpCode::li, node, rangeReg, 0xDED8);
+         generateTrg1ImmInstruction(cg, TR::InstOpCode::li, node, rangeReg, (int16_t)0xDED8);
          generateTrg1Src2ImmInstruction(cg, TR::InstOpCode::cmprb, node, cnd2Reg, srcReg, rangeReg, 0);
          generateTrg1Src2ImmInstruction(cg, TR::InstOpCode::cror, node, cnd1Reg, cnd2Reg, cnd1Reg, imm);
          break;
@@ -2729,7 +2715,7 @@ TR::Register *J9::Power::PrivateLinkage::buildDirectDispatch(TR::Node *callNode)
    // SG - start
    int32_t           argSize = buildArgs(callNode, dependencies);
    bool inlinedCharacterIsMethod = false;
-   if (cg()->comp()->target().cpu.id() >= TR_PPCp9 && cg()->comp()->target().is64Bit())
+   if (cg()->comp()->target().cpu.isAtLeast(OMR_PROCESSOR_PPC_P9) && cg()->comp()->target().is64Bit())
       {
       switch(callNode->getSymbol()->castToMethodSymbol()->getRecognizedMethod())
          {
@@ -2880,7 +2866,7 @@ TR::MemoryReference *J9::Power::PrivateLinkage::getOutgoingArgumentMemRef(int32_
    TR::Machine *machine = cg()->machine();
 
    TR::MemoryReference *result=new (trHeapMemory()) TR::MemoryReference(machine->getRealRegister(properties.getNormalStackPointerRegister()),
-                                        argSize+properties.getOffsetToFirstParm(), length, cg());
+                                        argSize+getOffsetToFirstParm(), length, cg());
    memArg.argRegister = argReg;
    memArg.argMemory = result;
    memArg.opCode = opCode;

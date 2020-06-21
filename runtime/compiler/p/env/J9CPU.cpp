@@ -20,124 +20,136 @@
  * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
  *******************************************************************************/
 
+#include "control/CompilationRuntime.hpp"
 #include "env/CompilerEnv.hpp"
 #include "env/CPU.hpp"
 #include "j9.h"
 #include "j9port.h"
 
-namespace J9
-{
-
-namespace Power
-{
-
+// supportsFeature and supports_feature_test will be removed when old_apis are no longer needed
 bool
-CPU::getPPCSupportsVMX()
+J9::Power::CPU::supportsFeature(uint32_t feature)
    {
-#if defined(J9OS_I5) && defined(J9OS_I5_V5R4)
-   return FALSE;
-#else
-   J9ProcessorDesc   *processorDesc       = TR::Compiler->target.cpu.TO_PORTLIB_getJ9ProcessorDesc();
-   J9PortLibrary     *privatePortLibrary  = TR::Compiler->portLib;
-   BOOLEAN feature = j9sysinfo_processor_has_feature(processorDesc, J9PORT_PPC_FEATURE_HAS_ALTIVEC);
-   return (TRUE == feature);
+   if (TR::Compiler->omrPortLib == NULL)
+      {
+      return false;
+      }
+
+#if defined(J9VM_OPT_JITSERVER)
+  if (TR::CompilationInfo::getStream())
 #endif
+     {
+     TR_ASSERT_FATAL(self()->supports_feature_test(feature), "feature test %d failed", feature);
+     }
+
+   OMRPORT_ACCESS_FROM_OMRPORT(TR::Compiler->omrPortLib);
+   return (TRUE == omrsysinfo_processor_has_feature(&_processorDescription, feature));
    }
 
 bool
-CPU::getPPCSupportsVSX()
+J9::Power::CPU::supports_feature_test(uint32_t feature)
    {
-#if defined(J9OS_I5) && defined(J9OS_I5_V5R4)
-   return FALSE;
-#else
-   J9ProcessorDesc   *processorDesc       = TR::Compiler->target.cpu.TO_PORTLIB_getJ9ProcessorDesc();
-   J9PortLibrary     *privatePortLibrary  = TR::Compiler->portLib;
-   BOOLEAN feature = j9sysinfo_processor_has_feature(processorDesc, J9PORT_PPC_FEATURE_HAS_VSX);
-   return (TRUE == feature);
-#endif
-   }
+   bool ans_old = false;
+   bool ans_new = false;
 
-bool
-CPU::getPPCSupportsAES()
-   {
-#if defined(J9OS_I5) && defined(J9OS_I5_V5R4)
-   return FALSE;
-#else
-   J9ProcessorDesc   *processorDesc       = TR::Compiler->target.cpu.TO_PORTLIB_getJ9ProcessorDesc();
-   J9PortLibrary     *privatePortLibrary  = TR::Compiler->portLib;
-   BOOLEAN hasVMX  = j9sysinfo_processor_has_feature(processorDesc, J9PORT_PPC_FEATURE_HAS_ALTIVEC);
-   BOOLEAN hasVSX  = j9sysinfo_processor_has_feature(processorDesc, J9PORT_PPC_FEATURE_HAS_VSX);
-   BOOLEAN isP8    = (processorDesc->processor >= PROCESSOR_PPC_P8);
-   return (isP8 && hasVMX && hasVSX);
-#endif
-   }
-
-bool
-CPU::getPPCSupportsTM()
-   {
-#if defined(J9OS_I5) && defined(J9OS_I5_V5R4)
-   return FALSE;
-#else
-   J9ProcessorDesc   *processorDesc       = TR::Compiler->target.cpu.TO_PORTLIB_getJ9ProcessorDesc();
-   J9PortLibrary     *privatePortLibrary  = TR::Compiler->portLib;
-   BOOLEAN feature = j9sysinfo_processor_has_feature(processorDesc, J9PORT_PPC_FEATURE_HTM);
-   return (TRUE == feature);
-#endif
-   }
-
-// Double check with os400 team to see if we can enable popcnt on I
-//
-bool 
-CPU::hasPopulationCountInstruction()
-   {
-#if defined(J9OS_I5)
-   return false;
-#else
-   return self()->id() >= TR_PPCp7;
-#endif
-   }
-
-
-bool
-CPU::supportsDecimalFloatingPoint()
-   {
 #if !defined(TR_HOST_POWER) || (defined(J9OS_I5) && defined(J9OS_I5_V5R4))
-   return FALSE;
+   ans_old = false;
 #else
    J9ProcessorDesc *processorDesc = TR::Compiler->target.cpu.TO_PORTLIB_getJ9ProcessorDesc();
    J9PortLibrary *privatePortLibrary = TR::Compiler->portLib;
-   BOOLEAN feature = j9sysinfo_processor_has_feature(processorDesc, J9PORT_PPC_FEATURE_HAS_DFP);
-   return (TRUE == feature);
+   ans_old = (TRUE == j9sysinfo_processor_has_feature(processorDesc, feature));
 #endif
-   }
+   
+   OMRPORT_ACCESS_FROM_OMRPORT(TR::Compiler->omrPortLib);
+   ans_new = (TRUE == omrsysinfo_processor_has_feature(&_processorDescription, feature));
 
-TR_ProcessorFeatureFlags
-CPU::getProcessorFeatureFlags()
-   {
-   TR_ProcessorFeatureFlags processorFeatureFlags = { {0} };
-   return processorFeatureFlags;
+   return ans_new == ans_old; 
    }
 
 bool
-CPU::isCompatible(TR_Processor processorSignature, TR_ProcessorFeatureFlags processorFeatureFlags)
+J9::Power::CPU::is(OMRProcessorArchitecture p)
    {
-   TR_Processor targetProcessor = self()->id();
+   if (TR::Compiler->omrPortLib == NULL)
+      return self()->id() == self()->get_old_processor_type_from_new_processor_type(p);
+
+#if defined(J9VM_OPT_JITSERVER)
+  if (TR::CompilationInfo::getStream())
+#endif
+     {
+     TR_ASSERT_FATAL((_processorDescription.processor == p) == (self()->id() == self()->get_old_processor_type_from_new_processor_type(p)), "is test %d failed, id() %d, _processorDescription.processor %d", p, self()->id(), _processorDescription.processor);
+     }
+
+   return _processorDescription.processor == p;
+   }
+
+bool
+J9::Power::CPU::isAtLeast(OMRProcessorArchitecture p)
+   {
+   if (TR::Compiler->omrPortLib == NULL)
+      return self()->id() >= self()->get_old_processor_type_from_new_processor_type(p);
+
+#if defined(J9VM_OPT_JITSERVER)
+  if (TR::CompilationInfo::getStream())
+#endif
+     {
+     TR_ASSERT_FATAL((_processorDescription.processor >= p) == (self()->id() >= self()->get_old_processor_type_from_new_processor_type(p)), "is at least test %d failed, id() %d, _processorDescription.processor %d", p, self()->id(), _processorDescription.processor);
+     }
+
+   return _processorDescription.processor >= p;
+   }
+
+bool
+J9::Power::CPU::isAtMost(OMRProcessorArchitecture p)
+   {
+   if (TR::Compiler->omrPortLib == NULL)
+      return self()->id() <= self()->get_old_processor_type_from_new_processor_type(p);
+
+#if defined(J9VM_OPT_JITSERVER)
+   if (TR::CompilationInfo::getStream())
+#endif
+      {
+      TR_ASSERT_FATAL((_processorDescription.processor <= p) == (self()->id() <= self()->get_old_processor_type_from_new_processor_type(p)), "is at most test %d failed, id() %d, _processorDescription.processor %d", p, self()->id(), _processorDescription.processor);
+      }
+
+   return _processorDescription.processor <= p;
+   }
+
+bool
+J9::Power::CPU::isCompatible(const OMRProcessorDesc& processorDescription)
+   {
+   OMRProcessorArchitecture targetProcessor = self()->getProcessorDescription().processor;
+   OMRProcessorArchitecture processor = processorDescription.processor;
    // Backwards compatibility only applies to p4,p5,p6,p7 and onwards
    // Looks for equality otherwise
-   if ((processorSignature == TR_PPCgp 
-       || processorSignature == TR_PPCgr 
-       || processorSignature == TR_PPCp6 
-       || (processorSignature >= TR_PPCp7 && processorSignature <= TR_LastPPCProcessor))
-       && (targetProcessor == TR_PPCgp 
-        || targetProcessor == TR_PPCgr 
-        || targetProcessor == TR_PPCp6 
-        || targetProcessor >= TR_PPCp7 && targetProcessor <= TR_LastPPCProcessor))
+   if ((processor == OMR_PROCESSOR_PPC_GP
+       || processor == OMR_PROCESSOR_PPC_GR 
+       || processor == OMR_PROCESSOR_PPC_P6 
+       || (processor >= OMR_PROCESSOR_PPC_P7 && processor <= OMR_PROCESSOR_PPC_LAST))
+       && (targetProcessor == OMR_PROCESSOR_PPC_GP 
+        || targetProcessor == OMR_PROCESSOR_PPC_GR 
+        || targetProcessor == OMR_PROCESSOR_PPC_P6 
+        || targetProcessor >= OMR_PROCESSOR_PPC_P7 && targetProcessor <= OMR_PROCESSOR_PPC_LAST))
       {
-      return targetProcessor >= processorSignature;
+      return targetProcessor >= processor;
       }
-   return targetProcessor == processorSignature;
+   return targetProcessor == processor;
    }
-   
-}
 
-}
+OMRProcessorDesc
+J9::Power::CPU::getProcessorDescription()
+   {
+#if defined(J9VM_OPT_JITSERVER)
+   if (auto stream = TR::CompilationInfo::getStream())
+      {
+      auto *vmInfo = TR::compInfoPT->getClientData()->getOrCacheVMInfo(stream);
+      return vmInfo->_processorDescription;
+      }
+#endif /* defined(J9VM_OPT_JITSERVER) */
+   return _processorDescription;
+   }
+
+bool
+J9::Power::CPU::getPPCSupportsVSX()
+   {
+   return self()->supportsFeature(OMR_FEATURE_PPC_HAS_VSX);
+   }
