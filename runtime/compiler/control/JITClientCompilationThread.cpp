@@ -1783,7 +1783,9 @@ handleServerMessage(JITServer::ClientStream *client, TR_J9VM *fe, JITServer::Mes
                {
                case TR_ResolvedMethodType::VirtualFromCP:
                   {
-                  ramMethod = (J9Method *) TR_ResolvedJ9Method::getVirtualMethod(fe, owningMethod->cp(), cpIndex, (UDATA *) &vTableOffset, NULL);
+                  UDATA offset;
+                  ramMethod = (J9Method *) TR_ResolvedJ9Method::getVirtualMethod(fe, owningMethod->cp(), cpIndex, &offset, NULL);
+                  vTableOffset = offset;
                   if (ramMethod && vTableOffset) createMethod = true;
                   break;
                   }
@@ -1803,6 +1805,19 @@ handleServerMessage(JITServer::ClientStream *client, TR_J9VM *fe, JITServer::Mes
                      TR::VMAccessCriticalSection resolveSpecialMethodRef(fe);
                      ramMethod = jitResolveSpecialMethodRef(fe->vmThread(), owningMethod->cp(), cpIndex, J9_RESOLVE_FLAG_JIT_COMPILE_TIME);
                      }
+                  if (ramMethod) createMethod = true;
+                  break;
+                  }
+               case TR_ResolvedMethodType::ImproperInterface:
+                  {
+                  TR::VMAccessCriticalSection getResolvedHandleMethod(fe);
+                  UDATA offset;
+                  ramMethod = jitGetImproperInterfaceMethodFromCP(
+                     fe->vmThread(),
+                     owningMethod->cp(),
+                     cpIndex,
+                     &offset);
+                  vTableOffset = offset;
                   if (ramMethod) createMethod = true;
                   break;
                   }
@@ -2581,6 +2596,7 @@ handleServerMessage(JITServer::ClientStream *client, TR_J9VM *fe, JITServer::Mes
       case MessageType::CHTable_clearReservable:
          {
          auto clazz = std::get<0>(client->getRecvData<TR_OpaqueClassBlock*>());
+         client->write(response, JITServer::Void());
          auto table = (JITClientPersistentCHTable*)comp->getPersistentInfo()->getPersistentCHTable();
          auto info = table->findClassInfoAfterLocking(clazz, comp);
          info->setReservable(false);
@@ -3279,6 +3295,10 @@ remoteCompile(
       }
    catch (const JITServer::StreamMessageTypeMismatch &e)
       {
+      client->~ClientStream();
+      TR_Memory::jitPersistentFree(client);
+      compInfoPT->setClientStream(NULL);
+
       if (TR::Options::isAnyVerboseOptionSet(TR_VerboseJITServer, TR_VerboseCompilationDispatch))
          TR_VerboseLog::writeLineLocked(TR_Vlog_FAILURE,
             "JITServer::StreamMessageTypeMismatch: %s for %s @ %s", e.what(), compiler->signature(), compiler->getHotnessName());
@@ -3287,6 +3307,18 @@ remoteCompile(
                compiler->signature(), compiler->getHotnessName(), e.what());
 
       compiler->failCompilation<JITServer::StreamMessageTypeMismatch>(e.what());
+      }
+   catch (const TR::CompilationInterrupted &e)
+      {
+      throw; // rethrow the exception
+      }
+   catch (...)
+      {
+      // For any other type of exception disconnect the socket 
+      client->~ClientStream();
+      TR_Memory::jitPersistentFree(client);
+      compInfoPT->setClientStream(NULL);
+      throw; // rethrow the exception
       }
 
    TR_MethodMetaData *metaData = NULL;

@@ -209,7 +209,7 @@ static void reportHook(J9VMThread *curThread, char *name, char *format=NULL, ...
       || TR::Options::getCmdLineOptions()->getVerboseOption(TR_VerboseHookDetails))
       {
       TR_VerboseLog::vlogAcquire();
-      TR_VerboseLog::writeLine(TR_Vlog_HK,"%x hook %s vmThread=%p ", (int)(intptr_t)curThread, name, curThread);
+      TR_VerboseLog::write(TR_Vlog_HK,"%x hook %s vmThread=%p ", (int)(intptr_t)curThread, name, curThread);
       if (format)
          {
          va_list args;
@@ -217,6 +217,7 @@ static void reportHook(J9VMThread *curThread, char *name, char *format=NULL, ...
          j9jit_vprintf(jitConfig, format, args);
          va_end(args);
          }
+      TR_VerboseLog::writeLine("");
       TR_VerboseLog::vlogRelease();
       }
    }
@@ -4336,10 +4337,14 @@ static void jitStateLogic(J9JITConfig * jitConfig, TR::CompilationInfo * compInf
           // after 10 minutes or STEADY_STATE switch to DEEPSTEADY_STATE
           // The 10 minutes may be shorter when multiple threads are running full speed
           // or longer when there isn't much work to be done
-          oldState == STEADY_STATE && (persistentInfo->getJitTotalSampleCount() - persistentInfo->getJitSampleCountWhenActiveStateEntered() > 60000))
+          ((oldState == STEADY_STATE) && ((persistentInfo->getJitTotalSampleCount() - persistentInfo->getJitSampleCountWhenActiveStateEntered()) > 60000)))
+         {
          newState = DEEPSTEADY_STATE;
+         }
       else
+         {
          newState = STEADY_STATE;
+         }
       }
    // A surge in compilations can make the transition back to STARTUP
    //t= 98186 oldState=3 newState=2 cSamples=125 iSamples= 11 comp=239 recomp=  4, Q_SZ=114
@@ -4945,15 +4950,19 @@ static void DoCalculateOverallCompCPUUtilization(TR::CompilationInfo *compInfo, 
    if (TR::Options::isAnyVerboseOptionSet(TR_VerboseCompilationThreads, TR_VerboseCompilationThreadsDetails))
       {
       TR_VerboseLog::vlogAcquire();
-      TR_VerboseLog::writeLine(TR_Vlog_INFO, "t=%6u TotalCompCpuUtil=%3d%%.", (uint32_t)crtTime, totalCompCPUUtilization);
+      TR_VerboseLog::write(TR_Vlog_INFO, "t=%6u TotalCompCpuUtil=%3d%%.", static_cast<uint32_t>(crtTime), totalCompCPUUtilization);
       TR::CompilationInfoPerThread * const *arrayOfCompInfoPT = compInfo->getArrayOfCompilationInfoPerThread();
       for (uint8_t i = 0; i < compInfo->getNumUsableCompilationThreads(); i++)
          {
          const CpuSelfThreadUtilization& cpuUtil = arrayOfCompInfoPT[i]->getCompThreadCPU();
          TR_VerboseLog::write(" compThr%d:%3d%% (%2d%%, %2d%%) ", i, cpuUtilizationValues[i], cpuUtil.getThreadLastCpuUtil(), cpuUtil.getThreadPrevCpuUtil());
          if (TR::Options::getCmdLineOptions()->getVerboseOption(TR_VerboseCompilationThreadsDetails))
-            TR_VerboseLog::write("(%dms, %dms, lastCheckpoint=%u) ", (int32_t)cpuUtil.getLastMeasurementInterval() / 1000000, (int32_t)cpuUtil.getSecondLastMeasurementInterval() / 1000000, cpuUtil.getLowResolutionClockAtLastUpdate());
+            TR_VerboseLog::write("(%dms, %dms, lastCheckpoint=%u) ", 
+               static_cast<int32_t>(cpuUtil.getLastMeasurementInterval()) / 1000000,
+               static_cast<int32_t>(cpuUtil.getSecondLastMeasurementInterval()) / 1000000,
+               cpuUtil.getLowResolutionClockAtLastUpdate());
          }
+      TR_VerboseLog::writeLine("");
       TR_VerboseLog::vlogRelease();
       }
    }

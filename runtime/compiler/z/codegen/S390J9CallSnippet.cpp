@@ -34,6 +34,8 @@
 #include "il/Node.hpp"
 #include "il/Node_inlines.hpp"
 #include "runtime/CodeCacheManager.hpp"
+#include "runtime/Runtime.hpp"
+#include "runtime/RuntimeAssumptions.hpp"
 
 uint8_t *
 TR::S390J9CallSnippet::generateVIThunk(TR::Node * callNode, int32_t argSize, TR::CodeGenerator * cg)
@@ -1396,7 +1398,7 @@ TR::S390JNICallDataSnippet::emitSnippetBody()
       // _ramMethod
       *(intptr_t *) cursor = (intptr_t) _ramMethod;
 
-      uint32_t reloType;
+      TR_ExternalRelocationTargetKind reloType;
       if (getNode()->getSymbol()->castToResolvedMethodSymbol()->isSpecial())
          reloType = TR_SpecialRamMethodConst;
       else if (getNode()->getSymbol()->castToResolvedMethodSymbol()->isStatic())
@@ -1414,7 +1416,7 @@ TR::S390JNICallDataSnippet::emitSnippetBody()
          {
          cg()->addExternalRelocation(new (cg()->trHeapMemory()) TR::ExternalRelocation(cursor, (uint8_t *) callNode->getSymbolReference(),
                callNode  ? (uint8_t *)(intptr_t)callNode->getInlinedSiteIndex() : (uint8_t *)-1,
-                     (TR_ExternalRelocationTargetKind) reloType, cg()),
+                     reloType, cg()),
                      __FILE__, __LINE__, callNode);
          }
 
@@ -1460,7 +1462,20 @@ TR::S390JNICallDataSnippet::emitSnippetBody()
       // _targetAddress/function pointer of native method
       *(intptr_t *) cursor = (intptr_t) _targetAddress;
       TR_OpaqueMethodBlock *method = getNode()->getSymbol()->castToResolvedMethodSymbol()->getResolvedMethod()->getPersistentIdentifier();
-      TR_PatchJNICallSite::make(cg()->fe(), cg()->trPersistentMemory(), (uintptr_t) method, cursor, comp->getMetadataAssumptionList());
+
+#ifdef J9VM_OPT_JITSERVER
+      if (comp->isOutOfProcessCompilation())
+         {
+         // For JITServer we need to build a list of assumptions that will be sent to client at end of compilation
+         intptr_t offset = cursor - cg()->getBinaryBufferStart();
+         SerializedRuntimeAssumption* sar = new (cg()->trHeapMemory()) SerializedRuntimeAssumption(RuntimeAssumptionOnRegisterNative, (uintptr_t)method, offset);
+         comp->getSerializedRuntimeAssumptions().push_front(sar);
+         }
+      else
+#endif // J9VM_OPT_JITSERVER
+         {
+         TR_PatchJNICallSite::make(cg()->fe(), cg()->trPersistentMemory(), (uintptr_t) method, cursor, comp->getMetadataAssumptionList());
+         }
 
       if (getNode()->getSymbol()->castToResolvedMethodSymbol()->isSpecial())
          reloType = TR_JNISpecialTargetAddress;
@@ -1478,7 +1493,7 @@ TR::S390JNICallDataSnippet::emitSnippetBody()
          {
          cg()->addExternalRelocation(new (cg()->trHeapMemory()) TR::ExternalRelocation(cursor, (uint8_t *) callNode->getSymbolReference(),
                callNode  ? (uint8_t *)(intptr_t)callNode->getInlinedSiteIndex() : (uint8_t *)-1,
-                     (TR_ExternalRelocationTargetKind) reloType, cg()),
+                     reloType, cg()),
                      __FILE__, __LINE__, callNode);
          }
 

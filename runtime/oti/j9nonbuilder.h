@@ -1989,7 +1989,9 @@ typedef struct J9BCTranslationData {
 #define BCT_Java13MajorVersionShifted 0x39000000
 #define BCT_Java14MajorVersionShifted 0x3A000000
 #define BCT_Java15MajorVersionShifted 0x3B000000
-#define BCT_JavaMaxMajorVersionShifted BCT_Java15MajorVersionShifted
+#define BCT_Java16MajorVersionShifted 0x3C000000
+
+#define BCT_JavaMaxMajorVersionShifted BCT_Java16MajorVersionShifted
 
 typedef struct J9RAMClassFreeListBlock {
 	UDATA size;
@@ -4552,6 +4554,11 @@ typedef struct J9InternalVMFunctions {
 	IDATA ( *createJoinableThreadWithCategory)(omrthread_t* handle, UDATA stacksize, UDATA priority, UDATA suspend, omrthread_entrypoint_t entrypoint, void* entryarg, U_32 category) ;
 	BOOLEAN ( *valueTypeCapableAcmp)(struct J9VMThread *currentThread, j9object_t lhs, j9object_t rhs) ;
 	BOOLEAN ( *isClassRefQtype)(struct J9Class *cpContextClass, U_16 cpIndex) ;
+	UDATA ( *getFlattenableFieldOffset)(struct J9Class *fieldOwner, J9ROMFieldShape *field);
+	BOOLEAN ( *isFlattenableFieldFlattened)(J9Class *fieldOwner, J9ROMFieldShape *field);
+	struct J9Class* ( *getFlattenableFieldType)(J9Class *fieldOwner, J9ROMFieldShape *field);
+	UDATA ( *getFlattenableFieldSize)(struct J9VMThread* currentThread, J9Class *fieldOwner, J9ROMFieldShape *field);
+	UDATA ( *arrayElementSize)(J9ArrayClass* arrayClass);
 } J9InternalVMFunctions;
 
 /* Jazz 99339: define a new structure to replace JavaVM so as to pass J9NativeLibrary to JVMTIEnv  */
