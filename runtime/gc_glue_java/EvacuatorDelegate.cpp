@@ -24,10 +24,12 @@
 #include "j9cfg.h"
 #include "j9consts.h"
 #include "j9nonbuilder.h"
+#include "j9protos.h"
 #include "modron.h"
 
 #include "ConfigurationDelegate.hpp"
 #include "CycleState.hpp"
+#include "EnvironmentStandard.hpp"
 #include "Evacuator.hpp"
 #include "EvacuatorDelegate.hpp"
 #include "EvacuatorRootScanner.hpp"
@@ -72,6 +74,7 @@ MM_EvacuatorDelegate::tearDown()
 uintptr_t
 MM_EvacuatorDelegate::prepareForEvacuation(MM_EnvironmentBase *env)
 {
+	Debug_MM_true(env->isMasterThread());
 	MM_GCExtensions *extensions = MM_GCExtensions::getExtensions(env);
 
 	/* Sum the count of OwnableSynchronizerObject candidates before clearing java stats */
@@ -107,6 +110,29 @@ MM_EvacuatorDelegate::prepareForEvacuation(MM_EnvironmentBase *env)
 }
 
 void
+MM_EvacuatorDelegate::mergeGCStats(MM_EnvironmentBase * envBase)
+{
+	MM_GCExtensions *ext = MM_GCExtensions::getExtensions(envBase);
+	MM_ScavengerJavaStats *finalGCJavaStats = &ext->scavengerJavaStats;
+
+	MM_EnvironmentStandard* env = MM_EnvironmentStandard::getEnvironment(envBase);
+	MM_ScavengerJavaStats *scavJavaStats = &env->getGCEnvironment()->_scavengerJavaStats;
+
+	finalGCJavaStats->_unfinalizedCandidates += scavJavaStats->_unfinalizedCandidates;
+	finalGCJavaStats->_unfinalizedEnqueued += scavJavaStats->_unfinalizedEnqueued;
+
+	finalGCJavaStats->_ownableSynchronizerCandidates += scavJavaStats->_ownableSynchronizerCandidates;
+	finalGCJavaStats->_ownableSynchronizerTotalSurvived += scavJavaStats->_ownableSynchronizerTotalSurvived;
+	finalGCJavaStats->_ownableSynchronizerNurserySurvived += scavJavaStats->_ownableSynchronizerNurserySurvived;
+
+	finalGCJavaStats->_weakReferenceStats.merge(&scavJavaStats->_weakReferenceStats);
+	finalGCJavaStats->_softReferenceStats.merge(&scavJavaStats->_softReferenceStats);
+	finalGCJavaStats->_phantomReferenceStats.merge(&scavJavaStats->_phantomReferenceStats);
+
+	scavJavaStats->clear();
+}
+
+void
 MM_EvacuatorDelegate::cycleStart()
 {
 	_cycleCleared = false;
@@ -127,9 +153,9 @@ void
 MM_EvacuatorDelegate::cycleEnd()
 {
 #if defined(J9VM_GC_FINALIZATION)
-	/* Alert the finalizer (one time) if work needs to be done */
-	if (_controller->setEvacuatorFlag(finalizationRequired, false)) {
-		/* flag was set and is now reset for all other evacuators so this thread will kick off finalization */
+	/* Alert the finalizer if work needs to be done */
+	if (_env->isMasterThread() && _controller->isEvacuatorFlagSet(finalizationRequired)) {
+		/* the master thread will kick off finalization */
 		J9JavaVM * javaVM = (J9JavaVM*)_env->getLanguageVM();
 		omrthread_monitor_enter(javaVM->finalizeMasterMonitor);
 		javaVM->finalizeMasterFlags |= J9_FINALIZE_FLAGS_MASTER_WAKE_UP;
