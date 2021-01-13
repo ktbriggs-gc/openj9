@@ -183,14 +183,9 @@ MM_EvacuatorRootScanner::scavengeFinalizableObjects()
 			if(_scavenger->isObjectInEvacuateMemory(systemObject)) {
 				MM_ForwardedHeader forwardedHeader(systemObject, _env->compressObjectReferences());
 				if (!forwardedHeader.isForwardedPointer()) {
-					omrobjectptr_t copiedObject = evacuator->evacuateRootObject(&forwardedHeader, true);
-					if (NULL == copiedObject) {
-						next = _extensions->accessBarrier->getFinalizeLink(systemObject);
-						objectBuffer.add(_env, systemObject);
-					} else {
-						next = _extensions->accessBarrier->getFinalizeLink(copiedObject);
-						objectBuffer.add(_env, copiedObject);
-					}
+					next = _extensions->accessBarrier->getFinalizeLink(systemObject);
+					omrobjectptr_t copiedOrNot = evacuator->evacuateRootObject(&forwardedHeader, true);
+					objectBuffer.add(_env, copiedOrNot);
 				} else {
 					omrobjectptr_t forwardedPtr =  forwardedHeader.getNonStrictForwardedObject();
 					Assert_MM_true(NULL != forwardedPtr);
@@ -217,14 +212,8 @@ MM_EvacuatorRootScanner::scavengeFinalizableObjects()
 				MM_ForwardedHeader forwardedHeader(defaultObject, _env->compressObjectReferences());
 				if (!forwardedHeader.isForwardedPointer()) {
 					next = _extensions->accessBarrier->getFinalizeLink(defaultObject);
-					omrobjectptr_t copiedObject = evacuator->evacuateRootObject(&forwardedHeader, true);
-					if (NULL == copiedObject) {
-						next = _extensions->accessBarrier->getFinalizeLink(defaultObject);
-						objectBuffer.add(_env, defaultObject);
-					} else {
-						next = _extensions->accessBarrier->getFinalizeLink(copiedObject);
-						objectBuffer.add(_env, copiedObject);
-					}
+					omrobjectptr_t copiedOrNot = evacuator->evacuateRootObject(&forwardedHeader, true);
+					objectBuffer.add(_env, copiedOrNot);
 				} else {
 					omrobjectptr_t forwardedPtr = forwardedHeader.getNonStrictForwardedObject();
 					Assert_MM_true(NULL != forwardedPtr);
@@ -251,14 +240,8 @@ MM_EvacuatorRootScanner::scavengeFinalizableObjects()
 				MM_ForwardedHeader forwardedHeader(referenceObject, _env->compressObjectReferences());
 				if (!forwardedHeader.isForwardedPointer()) {
 					next = _extensions->accessBarrier->getReferenceLink(referenceObject);
-					omrobjectptr_t copiedObject = evacuator->evacuateRootObject(&forwardedHeader, true);
-					if (NULL == copiedObject) {
-						next = _extensions->accessBarrier->getReferenceLink(referenceObject);
-						referenceBuffer.add(_env, referenceObject);
-					} else {
-						next = _extensions->accessBarrier->getReferenceLink(copiedObject);
-						referenceBuffer.add(_env, copiedObject);
-					}
+					omrobjectptr_t copiedOrNot = evacuator->evacuateRootObject(&forwardedHeader, true);
+					referenceBuffer.add(_env, copiedOrNot);
 				} else {
 					omrobjectptr_t forwardedPtr =  forwardedHeader.getNonStrictForwardedObject();
 					Assert_MM_true(NULL != forwardedPtr);

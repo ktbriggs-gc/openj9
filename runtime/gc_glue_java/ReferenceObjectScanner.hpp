@@ -52,6 +52,7 @@ private:
 	 */
 	MMINLINE uintptr_t skipReferentSlot(fomrobject_t *mapPtr, uintptr_t scanMap)
 	{
+		Debug_OS_true(NULL != mapPtr);
 		if (_referentSlotAddress > mapPtr) {
 			/* Skip over referent slot */
 			intptr_t referentSlotDistance = GC_SlotObject::subtractSlotAddresses(_referentSlotAddress, mapPtr, compressObjectReferences());
@@ -72,7 +73,7 @@ protected:
 	 * @param[in] flags Scanning context flags
 	 */
 	MMINLINE GC_ReferenceObjectScanner(MM_EnvironmentBase *env, omrobjectptr_t objectPtr, fomrobject_t *referentSlotAddress, uintptr_t flags)
-		: GC_MixedObjectScanner(env, objectPtr, flags)
+		: GC_MixedObjectScanner(env, flags)
 		, _referentSlotAddress(referentSlotAddress)
 	{
 		_typeId = __FUNCTION__;
@@ -82,12 +83,41 @@ protected:
 	 * Subclasses must call this method to set up the instance description bits and description pointer.
 	 */
 	MMINLINE void
-	initialize(MM_EnvironmentBase *env, J9Class *clazzPtr)
+	initialize(MM_EnvironmentBase *env, omrobjectptr_t objectPtr)
 	{
-		GC_MixedObjectScanner::initialize(env, clazzPtr);
+		GC_MixedObjectScanner::initialize(env, objectPtr);
+		Debug_OS_true(0 < getBytesRemaining());
 
 		/* Skip over referent slot if required */
-		_scanMap = skipReferentSlot(_scanPtr, _scanMap);
+		_scanMap = skipReferentSlot(_mapPtr, _scanMap);
+	}
+
+	/**
+	 * Return base pointer and slot bit map for next block of contiguous slots to be scanned. The
+	 * base pointer must be fomrobject_t-aligned. Bits in the bit map are scanned in order of
+	 * increasing significance, and the least significant bit maps to the slot at the returned
+	 * base pointer.
+	 *
+	 * @param[out] scanMap the bit map for the slots contiguous with the returned base pointer
+	 * @param[out] hasNextSlotMap set this to true if this method should be called again, false if this map is known to be last
+	 * @return a pointer to the first slot mapped by the least significant bit of the map, or NULL if no more slots
+	 */
+	virtual fomrobject_t *
+#if defined(OMR_GC_LEAF_BITS)
+	getNextSlotMap(uintptr_t *slotMap, uintptr_t *leafMap, bool *hasNextSlotMap)
+	{
+		fomrobject_t *mapPtr = GC_MixedObjectScanner::getNextSlotMap(slotMap, leafMap, hasNextSlotMap);
+#else
+	getNextSlotMap(uintptr_t *slotMap, bool *hasNextSlotMap)
+	{
+		fomrobject_t *mapPtr = GC_MixedObjectScanner::getNextSlotMap(slotMap, hasNextSlotMap);
+#endif /* defined(OMR_GC_LEAF_BITS) */
+
+		/* Skip over referent slot */
+		*slotMap = skipReferentSlot(mapPtr, *slotMap);
+
+		Debug_OS_true((NULL == mapPtr) || (0 < getBytesRemaining()));
+		return mapPtr;
 	}
 
 public:
@@ -106,53 +136,8 @@ public:
 	{
 		GC_ReferenceObjectScanner *objectScanner = (GC_ReferenceObjectScanner *)allocSpace;
 		new(objectScanner) GC_ReferenceObjectScanner(env, objectPtr, referentSlotAddress, flags);
-		objectScanner->initialize(env, J9GC_J9OBJECT_CLAZZ(objectPtr, env));
+		objectScanner->initialize(env, objectPtr);
 		return objectScanner;
 	}
-
-	/**
-	 * Return base pointer and slot bit map for next block of contiguous slots to be scanned. The
-	 * base pointer must be fomrobject_t-aligned. Bits in the bit map are scanned in order of
-	 * increasing significance, and the least significant bit maps to the slot at the returned
-	 * base pointer.
-	 *
-	 * @param[out] scanMap the bit map for the slots contiguous with the returned base pointer
-	 * @param[out] hasNextSlotMap set this to true if this method should be called again, false if this map is known to be last
-	 * @return a pointer to the first slot mapped by the least significant bit of the map, or NULL if no more slots
-	 */
-	virtual fomrobject_t *
-	getNextSlotMap(uintptr_t *slotMap, bool *hasNextSlotMap)
-	{
-		fomrobject_t *mapPtr = GC_MixedObjectScanner::getNextSlotMap(slotMap, hasNextSlotMap);
-
-		/* Skip over referent slot */
-		*slotMap = skipReferentSlot(mapPtr, *slotMap);
-
-		return mapPtr;
-	}
-
-#if defined(OMR_GC_LEAF_BITS)
-	/**
-	 * Return base pointer and slot bit map for next block of contiguous slots to be scanned. The
-	 * base pointer must be fomrobject_t-aligned. Bits in the bit map are scanned in order of
-	 * increasing significance, and the least significant bit maps to the slot at the returned
-	 * base pointer.
-	 *
-	 * @param[out] scanMap the bit map for the slots contiguous with the returned base pointer
-	 * @param[out] leafMap the leaf bit map for the slots contiguous with the returned base pointer
-	 * @param[out] hasNextSlotMap set this to true if this method should be called again, false if this map is known to be last
-	 * @return a pointer to the first slot mapped by the least significant bit of the map, or NULL if no more slots
-	 */
-	virtual fomrobject_t *
-	getNextSlotMap(uintptr_t *slotMap, uintptr_t *leafMap, bool *hasNextSlotMap)
-	{
-		fomrobject_t *mapPtr = GC_MixedObjectScanner::getNextSlotMap(slotMap, leafMap, hasNextSlotMap);
-
-		/* Skip over referent slot */
-		*slotMap = skipReferentSlot(mapPtr, *slotMap);
-
-		return mapPtr;
-	}
-#endif /* defined(OMR_GC_LEAF_BITS) */
 };
 #endif /* REFERENCEOBJECTSCANNER_HPP_ */

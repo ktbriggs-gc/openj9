@@ -805,6 +805,34 @@ gcParseXXgcArguments(J9JavaVM *vm, char *optArg)
 			continue ;
 		}
 
+		if (try_scan(&scan_start, "recursiveMinimumCopyspaceSize=")) {
+			/* Read in restricted copyspace size */
+			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorMinimumCopyspaceSize, "recursiveMinimumCopyspaceSize=")) {
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			if(MM_EvacuatorBase::min_copyspace_size > extensions->evacuatorMinimumCopyspaceSize) {
+				j9nls_printf(PORTLIB,J9NLS_ERROR, J9NLS_GC_OPTIONS_VALUE_MUST_BE_ABOVE, "-XXgc:recursiveMinimumCopyspaceSize", (UDATA)MM_EvacuatorBase::min_copyspace_size - 1);
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			continue;
+		}
+
+		if (try_scan(&scan_start, "recursiveMinimumWorkspaceSize=")) {
+			/* Read in restricted workspace size */
+			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorMinimumWorkspaceSize, "recursiveMinimumWorkspaceSize=")) {
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			if(MM_EvacuatorBase::min_workspace_size > extensions->evacuatorMinimumWorkspaceSize) {
+				j9nls_printf(PORTLIB,J9NLS_ERROR, J9NLS_GC_OPTIONS_VALUE_MUST_BE_ABOVE, "-XXgc:recursiveMinimumWorkspaceSize", (UDATA)MM_EvacuatorBase::min_workspace_size - 1);
+				returnValue = JNI_EINVAL;
+				break;
+			}
+			continue;
+		}
+
 		if (try_scan(&scan_start, "recursiveMaximumStackDepth=")) {
 			/* Read in restricted inside copy size */
 			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorMaximumStackDepth, "recursiveMaximumStackDepth=")) {
@@ -825,40 +853,12 @@ gcParseXXgcArguments(J9JavaVM *vm, char *optArg)
 				returnValue = JNI_EINVAL;
 				break;
 			}
-			if(MM_EvacuatorBase::min_inside_object_size > extensions->evacuatorMaximumInsideCopySize) {
-				j9nls_printf(PORTLIB,J9NLS_ERROR, J9NLS_GC_OPTIONS_VALUE_MUST_BE_ABOVE, "-XXgc:recursiveMaximumInsideCopySize", (UDATA)MM_EvacuatorBase::min_inside_object_size - 1);
-				returnValue = JNI_EINVAL;
-				break;
-			}
 			continue;
 		}
 
 		if (try_scan(&scan_start, "recursiveMaximumInsideCopyDistance=")) {
 			/* Read in restricted inside copy distance */
 			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorMaximumInsideCopyDistance, "recursiveMaximumInsideCopyDistance=")) {
-				returnValue = JNI_EINVAL;
-				break;
-			}
-			continue;
-		}
-
-		if (try_scan(&scan_start, "recursiveWorkVolumeQuantum=")) {
-			/* Read in evacuator work quanta */
-			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorWorkQuantumSize, "recursiveWorkVolumeQuantum=")) {
-				returnValue = JNI_EINVAL;
-				break;
-			}
-			if(MM_EvacuatorBase::min_workspace_release > extensions->evacuatorWorkQuantumSize) {
-				j9nls_printf(PORTLIB,J9NLS_ERROR, J9NLS_GC_OPTIONS_VALUE_MUST_BE_ABOVE, "-XXgc:recursiveWorkVolumeQuantum", (UDATA)MM_EvacuatorBase::min_workspace_release - 1);
-				returnValue = JNI_EINVAL;
-				break;
-			}
-			continue;
-		}
-
-		if (try_scan(&scan_start, "recursiveWorkVolumeQuanta=")) {
-			/* Read in evacuator work quanta */
-			if(!scan_udata_helper(vm, &scan_start, &extensions->evacuatorWorkQuanta, "recursiveWorkVolumeQuanta=")) {
 				returnValue = JNI_EINVAL;
 				break;
 			}

@@ -40,6 +40,7 @@ private:
 
 	MM_EnvironmentBase *_env;
 	uintptr_t _elementSizeWithoutPadding; /**< Size of the flattened element, without padding */
+	uintptr_t _elementStride; /**< The stride of each element, including element padding */
 	uintptr_t *_descriptionBasePtr; /**< Pointer to the description base */
 #if defined(OMR_GC_LEAF_BITS)
 	uintptr_t *_leafBasePtr; /**< Pointer to the leaf description base */
@@ -84,19 +85,28 @@ protected:
 	: GC_HeadlessMixedObjectScanner(env, scanPtr, elementSize, flags | GC_ObjectScanner::indexableObject)
 	, _env(env)
 	, _elementSizeWithoutPadding(elementSize)
+	, _elementStride(elementStride)
 	, _descriptionBasePtr(descriptionBasePtr)
 #if defined(OMR_GC_LEAF_BITS)
 	, _leafBasePtr(leafBasePtr)
 #endif /* defined(OMR_GC_LEAF_BITS) */
 	/* Pass 0 for scanMap, as the indexable iterator does not use the scanMap */
-	, _indexableScanner(env, arrayPtr, basePtr, limitPtr, scanPtr, endPtr, 0, elementStride, flags)
+	, _indexableScanner(env, arrayPtr, basePtr, limitPtr, scanPtr, endPtr, 0, flags)
 	{
 		_typeId = __FUNCTION__;
 	}
 
 	MMINLINE void
-	initialize(MM_EnvironmentBase *env)
+	initialize(MM_EnvironmentBase *env, omrobjectptr_t objectPtr)
 	{
+		/* set up the map base pointer and install it as the initial scan slot address flagged as unscanned */
+		const uintptr_t slotSize = slotSizeInBytes();
+		GC_ObjectModel * const objectModel = &env->getExtensions()->objectModel;
+		fomrobject_t *scanPtr = (fomrobject_t *)objectPtr + (objectModel->getHeaderSize(objectPtr) / slotSize);
+		_endPtr = (fomrobject_t *)objectPtr + (objectModel->getConsumedSizeInBytesWithHeader(objectPtr) / slotSize);
+		bool hasMoreSlots = (_bitsPerScanMap < GC_SlotObject::subtractSlotAddresses(_endPtr, scanPtr, compressObjectReferences()));
+		setMapPtr(scanPtr, hasMoreSlots);
+
 #if defined(OMR_GC_LEAF_BITS)
 		GC_HeadlessMixedObjectScanner::initialize(env, _descriptionBasePtr, _leafBasePtr);
 #else /* defined(OMR_GC_LEAF_BITS) */
@@ -109,6 +119,49 @@ protected:
 		 * to miss other elements of the array
 		 */
 		setMoreSlots();
+	}
+
+	/**
+	 * Return base pointer and slot bit map for next block of contiguous slots to be scanned. The
+	 * base pointer must be fomrobject_t-aligned. Bits in the bit map are scanned in order of
+	 * increasing significance, and the least significant bit maps to the slot at the returned
+	 * base pointer.
+	 *
+	 * @param[out] scanMap the bit map for the slots contiguous with the returned base pointer
+	 * @param[out] hasNextSlotMap set this to true if this method should be called again, false if this map is known to be last
+	 * @return a pointer to the first slot mapped by the least significant bit of the map, or NULL if no more slots
+	 */
+	virtual fomrobject_t *
+#if defined(OMR_GC_LEAF_BITS)
+	getNextSlotMap(uintptr_t *slotMap, uintptr_t *leafMap, bool *hasNextSlotMap)
+	{
+		fomrobject_t *result = GC_HeadlessMixedObjectScanner::getNextSlotMap(slotMap, leafMap, hasNextSlotMap);
+#else /* defined(OMR_GC_LEAF_BITS) */
+	getNextSlotMap(uintptr_t *slotMap, bool *hasNextSlotMap)
+	{
+		fomrobject_t *result = GC_HeadlessMixedObjectScanner::getNextSlotMap(slotMap, hasNextSlotMap);
+#endif /* defined(OMR_GC_LEAF_BITS) */
+		/* Ignore hasNextSlotMap from HeadLess, we want to always report that there is another element */
+		*hasNextSlotMap = true;
+		fomrobject_t *nextMapPtr = _mapPtr;
+		if (result == NULL) {
+			/* No more slots in the current element, get the next element of the array */
+			fomrobject_t *slot = _indexableScanner.nextIndexableElement(_elementStride);
+			if (slot == NULL) {
+				/* There are no elements in the array */
+				*hasNextSlotMap = false;
+				nextMapPtr = NULL;
+			} else {
+				nextMapPtr = slot;
+				_endPtr = (fomrobject_t *)((uintptr_t)nextMapPtr + _elementSizeWithoutPadding);
+				GC_HeadlessMixedObjectScanner::initialize(_env, _descriptionBasePtr, _leafBasePtr);
+				/* GC_HeadlessMixedObjectScanner::initialize() may setNoMoreSlots(), so set it back to true. 
+				 * We must also return (hasNextSlotMap = true) on top of this
+				 */
+				setMoreSlots();
+			}
+		}
+		return nextMapPtr;
 	}
 
 public:
@@ -130,11 +183,11 @@ public:
 		J9ArrayClass *j9ArrayClass = (J9ArrayClass *) clazzPtr;
 
 		/* TODO are these always the same? */
-		Assert_MM_true(j9ArrayClass->componentType == j9ArrayClass->leafComponentType);
+		Debug_OS_true(j9ArrayClass->componentType == j9ArrayClass->leafComponentType);
 
 		J9Class *elementClass = j9ArrayClass->componentType;
 		omrarrayptr_t arrayPtr = (omrarrayptr_t)objectPtr;
-		
+
 		uintptr_t sizeInElements = arrayObjectModel->getSizeInElements(arrayPtr);
 		uintptr_t elementSize = J9_VALUETYPE_FLATTENED_SIZE(elementClass);
 		uintptr_t elementStride = J9ARRAYCLASS_GET_STRIDE(clazzPtr);
@@ -157,14 +210,12 @@ public:
 		new(objectScanner) GC_FlattenedArrayObjectScanner(env, objectPtr, basePtr, limitPtr, scanPtr, endPtr, elementSize, elementStride, instanceDescription, flags);
 #endif /* defined(OMR_GC_LEAF_BITS) */
 
-		objectScanner->initialize(env);
-		if (0 != startIndex) {
-			objectScanner->clearHeadObjectScanner();
-		}
+		objectScanner->setFlags(GC_FlattenedArrayObjectScanner::headObjectScanner, (0 == startIndex));
+		objectScanner->initialize(env, objectPtr);
 		return objectScanner;
 	}
 
-	MMINLINE uintptr_t getBytesRemaining() { return sizeof(fomrobject_t) * (_endPtr - _scanPtr); }
+	MMINLINE uintptr_t getBytesRemaining() { return (uintptr_t)_endPtr - (uintptr_t)getScanPtr(); }
 
 	/**
 	 * @param env The scanning thread environment
@@ -178,79 +229,6 @@ public:
 		Assert_MM_unimplemented();
 		return NULL;
 	}
-
-	/**
-	 * Return base pointer and slot bit map for next block of contiguous slots to be scanned. The
-	 * base pointer must be fomrobject_t-aligned. Bits in the bit map are scanned in order of
-	 * increasing significance, and the least significant bit maps to the slot at the returned
-	 * base pointer.
-	 *
-	 * @param[out] scanMap the bit map for the slots contiguous with the returned base pointer
-	 * @param[out] hasNextSlotMap set this to true if this method should be called again, false if this map is known to be last
-	 * @return a pointer to the first slot mapped by the least significant bit of the map, or NULL if no more slots
-	 */
-	virtual fomrobject_t *
-	getNextSlotMap(uintptr_t *slotMap, bool *hasNextSlotMap)
-	{
-		fomrobject_t *result = GC_HeadlessMixedObjectScanner::getNextSlotMap(slotMap, hasNextSlotMap);
-		/* Ignore hasNextSlotMap from HeadLess, we want to always report that there is another element */
-		*hasNextSlotMap = true;
-		if (result == NULL) {
-			/* No more slots in the current element, get the next element of the array */
-			result = _indexableScanner.nextIndexableElement();
-			if (result == NULL) {
-				/* There are no elements in the array */
-				*hasNextSlotMap = false;
-			} else {
-				_mapPtr = result;
-				_endPtr = (fomrobject_t *)((uintptr_t)_mapPtr + _elementSizeWithoutPadding);
-				GC_HeadlessMixedObjectScanner::initialize(_env, _descriptionBasePtr, _leafBasePtr);
-				/* GC_HeadlessMixedObjectScanner::initialize() may setNoMoreSlots(), so set it back to true. 
-				 * We must also return (hasNextSlotMap = true) on top of this
-				 */
-				setMoreSlots();
-			}
-		}
-		return result;
-	}
-
-#if defined(OMR_GC_LEAF_BITS)
-	/**
-	 * Return base pointer and slot bit map for next block of contiguous slots to be scanned. The
-	 * base pointer must be fomrobject_t-aligned. Bits in the bit map are scanned in order of
-	 * increasing significance, and the least significant bit maps to the slot at the returned
-	 * base pointer.
-	 *
-	 * @param[out] scanMap the bit map for the slots contiguous with the returned base pointer
-	 * @param[out] leafMap the leaf bit map for the slots contiguous with the returned base pointer
-	 * @param[out] hasNextSlotMap set this to true if this method should be called again, false if this map is known to be last
-	 * @return a pointer to the first slot mapped by the least significant bit of the map, or NULL if no more slots
-	 */
-	virtual fomrobject_t *
-	getNextSlotMap(uintptr_t *slotMap, uintptr_t *leafMap, bool *hasNextSlotMap)
-	{
-		fomrobject_t *result = GC_HeadlessMixedObjectScanner::getNextSlotMap(slotMap, leafMap, hasNextSlotMap);
-		/* Ignore hasNextSlotMap from HeadLess, we want to always report that there is another element */
-		*hasNextSlotMap = true;
-		if (result == NULL) {
-			/* No more slots in the current element, get the next element of the array */
-			result = _indexableScanner.nextIndexableElement();
-			if (result == NULL) {
-				/* There are no elements in the array */
-				*hasNextSlotMap = false;
-			} else {
-				_mapPtr = result;
-				_endPtr = (fomrobject_t *)((uintptr_t)_mapPtr + _elementSizeWithoutPadding);
-				GC_HeadlessMixedObjectScanner::initialize(_env, _descriptionBasePtr, _leafBasePtr);
-				/* GC_HeadlessMixedObjectScanner::initialize() may setNoMoreSlots(), so set it back to true. 
-				 * We must also return (hasNextSlotMap = true) on top of this
-				 */
-				setMoreSlots();
-			}
-		}
-		return result;
-	}
-#endif /* defined(OMR_GC_LEAF_BITS) */
 };
 
 #endif /* FLATTENEDARRAYOBJECTSCANNER_HPP_ */

@@ -70,12 +70,6 @@ MM_EvacuatorRootClearer::scanUnfinalizedObjectsComplete(MM_EnvironmentBase *env)
 	if (_scavenger->isEvacuatorFlagSet(MM_EvacuatorDelegate::shouldScavengeUnfinalizedObjects)) {
 		reportScanningStarted(RootScannerEntity_UnfinalizedObjectsComplete);
 		_env->_currentTask->synchronizeGCThreads(_env, UNIQUE_ID);
-#if defined(EVACUATOR_DEBUG)
-		if (getEvacuator()->isDebugCycle()) {
-			OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
-			omrtty_printf("%5lu %2llu %2llu:   unfinal;\n", _scavenger->getEpoch()->gc, (uint64_t)_scavenger->getEpoch()->epoch, (uint64_t)getEvacuator()->getWorkerIndex());
-		}
-#endif /* defined(EVACUATOR_DEBUG) */
 		if (!getEvacuator()->evacuateHeap()) {
 			result = complete_phase_ABORT;
 		}
@@ -123,18 +117,6 @@ MM_EvacuatorRootClearer::scanWeakReferencesComplete(MM_EnvironmentBase *env)
 	 * finalizable referents get cleared */
 	if (_scavenger->isAnyEvacuatorFlagSet(MM_EvacuatorDelegate::shouldScavengeWeakReferenceObjects | MM_EvacuatorDelegate::shouldScavengeSoftReferenceObjects)) {
 		_env->_currentTask->synchronizeGCThreads(_env, UNIQUE_ID);
-#if defined(EVACUATOR_DEBUG)
-		if (getEvacuator()->isDebugCycle()) {
-			OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
-			if (_scavenger->areAllEvacuatorFlagsSet(MM_EvacuatorDelegate::shouldScavengeWeakReferenceObjects | MM_EvacuatorDelegate::shouldScavengeSoftReferenceObjects)) {
-				omrtty_printf("%5lu %2llu %2llu: soft+weak;\n", _scavenger->getEpoch()->gc, (uint64_t)_scavenger->getEpoch()->epoch, (uint64_t)getEvacuator()->getWorkerIndex());
-			} else if (_scavenger->isEvacuatorFlagSet(MM_EvacuatorDelegate::shouldScavengeWeakReferenceObjects)) {
-				omrtty_printf("%5lu %2llu %2llu:      weak;\n", _scavenger->getEpoch()->gc, (uint64_t)_scavenger->getEpoch()->epoch, (uint64_t)getEvacuator()->getWorkerIndex());
-			} else if (_scavenger->isEvacuatorFlagSet(MM_EvacuatorDelegate::shouldScavengeSoftReferenceObjects)) {
-				omrtty_printf("%5lu %2llu %2llu:      soft;\n", _scavenger->getEpoch()->gc, (uint64_t)_scavenger->getEpoch()->epoch, (uint64_t)getEvacuator()->getWorkerIndex());
-			}
-		}
-#endif /* defined(EVACUATOR_DEBUG) */
 	}
 	return complete_phase_OK;
 }
@@ -162,12 +144,6 @@ MM_EvacuatorRootClearer::scanPhantomReferencesComplete(MM_EnvironmentBase *env)
 			_env->_currentTask->releaseSynchronizedGCThreads(_env);
 		}
 
-#if defined(EVACUATOR_DEBUG)
-		if (getEvacuator()->isDebugCycle()) {
-			OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
-			omrtty_printf("%5lu %2llu %2llu:   phantom;\n", _scavenger->getEpoch()->gc, (uint64_t)_scavenger->getEpoch()->epoch, (uint64_t)getEvacuator()->getWorkerIndex());
-		}
-#endif /* defined(EVACUATOR_DEBUG) */
 		/* phantom reference processing may resurrect objects - scan them now */
 		if (!getEvacuator()->evacuateHeap()) {
 			result = complete_phase_ABORT;
@@ -375,13 +351,13 @@ MM_EvacuatorRootClearer::scavengeUnfinalizedObjects()
 							MM_ForwardedHeader forwardedHeader(object, _env->compressObjectReferences());
 							if (!forwardedHeader.isForwardedPointer()) {
 								Assert_MM_true(evacuator->isInEvacuate(object));
+								next = _extensions->accessBarrier->getFinalizeLink(object);
 								omrobjectptr_t finalizableObject = evacuator->evacuateRootObject(&forwardedHeader, true);
-								if (NULL == finalizableObject) {
+								if (evacuator->isInEvacuate(finalizableObject)) {
 									/* Failure - the scavenger must back out the work it has done. */
 									gcEnv->_unfinalizedObjectBuffer->add(_env, object);
 								} else {
 									/* object was not previously forwarded -- it is now finalizable so push it to the local buffer */
-									next = _extensions->accessBarrier->getFinalizeLink(finalizableObject);
 									buffer.add(_env, finalizableObject);
 									gcEnv->_scavengerJavaStats._unfinalizedEnqueued += 1;
 									_scavenger->setEvacuatorFlag(MM_EvacuatorDelegate::finalizationRequired, true);

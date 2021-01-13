@@ -51,7 +51,7 @@ GC_ObjectModelDelegate::initializeAllocation(MM_EnvironmentBase *env, void *allo
 }
 
 #if defined(OMR_GC_MODRON_SCAVENGER)
-void
+uintptr_t
 GC_ObjectModelDelegate::calculateObjectDetailsForCopy(MM_EnvironmentBase *env, MM_ForwardedHeader *forwardedHeader, uintptr_t *objectCopySizeInBytes, uintptr_t *reservedObjectSizeInBytes, uintptr_t *hotFieldAlignmentDescriptor)
 {
 	GC_ObjectModel *objectModel = &(env->getExtensions()->objectModel);
@@ -78,5 +78,28 @@ GC_ObjectModelDelegate::calculateObjectDetailsForCopy(MM_EnvironmentBase *env, M
 	actualObjectCopySizeInBytes += *objectCopySizeInBytes;
 	*reservedObjectSizeInBytes = objectModel->adjustSizeInBytes(actualObjectCopySizeInBytes);
 	*hotFieldAlignmentDescriptor = clazz->instanceHotFieldDescription;
+
+	uintptr_t classificationBits = OMR_GC_MIXED_OBJECT;
+	switch(J9GC_CLASS_SHAPE(clazz)) {
+	case OBJECT_HEADER_SHAPE_BYTES:
+	case OBJECT_HEADER_SHAPE_WORDS:
+	case OBJECT_HEADER_SHAPE_LONGS:
+	case OBJECT_HEADER_SHAPE_DOUBLES:
+		classificationBits = OMR_GC_PRIMITIVE_ARRAY;
+		break;
+	case OBJECT_HEADER_SHAPE_MIXED:
+		if ((1 == (uintptr_t)clazz->instanceDescription)) {
+			classificationBits = OMR_GC_PRIMITIVE_OBJECT;
+		}
+		break;
+	case OBJECT_HEADER_SHAPE_POINTERS:
+		classificationBits = OMR_GC_POINTER_ARRAY;
+		break;
+	case OBJECT_HEADER_SHAPE_UNUSED8:
+	default:
+		break;
+	}
+
+	return classificationBits;
 }
 #endif /* defined(OMR_GC_MODRON_SCAVENGER) */

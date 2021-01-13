@@ -119,7 +119,7 @@ public:
 	scanClearable(MM_EnvironmentBase *env)
 	{
 		Assert_MM_true(env == _env);
-		if(env->_currentTask->synchronizeGCThreadsAndReleaseSingleThread(env, UNIQUE_ID)) {
+		if (env->_currentTask->synchronizeGCThreadsAndReleaseSingleThread(env, UNIQUE_ID)) {
 			/* Soft and weak references resurrected by finalization need to be cleared immediately since weak and soft processing has already completed.
 			 * This has to be set before unfinalizable (and phantom) processing
 			 */

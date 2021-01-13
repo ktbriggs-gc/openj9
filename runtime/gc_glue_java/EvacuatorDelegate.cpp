@@ -171,38 +171,21 @@ bool
 MM_EvacuatorDelegate::objectHasIndirectObjectsInNursery(omrobjectptr_t objectptr)
 {
 	J9Class *classToScan = J9VM_J9CLASS_FROM_HEAPCLASS((J9VMThread*)_env->getLanguageVMThread(), objectptr);
-	Debug_MM_true(NULL != classToScan);
-
-	/* Check if Class Object should be remembered */
-	omrobjectptr_t classObjectPtr = (omrobjectptr_t)classToScan->classObject;
-	Assert_MM_false(_evacuator->isInEvacuate(classObjectPtr));
-	if (_evacuator->isInSurvivor(classObjectPtr)) {
-		 return true;
-	}
-
-	/* Iterate though Class Statics */
+	Debug_MM_true((uintptr_t)0x99669966 == classToScan->eyecatcher);
 	do {
-		omrobjectptr_t *slotPtr = NULL;
-		GC_ClassStaticsIterator classStaticsIterator(_env, classToScan);
-		while(NULL != (slotPtr = (omrobjectptr_t*)classStaticsIterator.nextSlot())) {
-			omrobjectptr_t objectptr = *slotPtr;
-			if (NULL != objectptr){
-				if (_evacuator->isInSurvivor(objectptr) || _evacuator->isInSurvivor(objectptr)){
-					return true;
-				}
+		/* Iterate over all slots in a class which contain an object reference */
+		GC_ClassIterator classIterator(_env, classToScan);
+		for (volatile j9object_t *slotPtr = classIterator.nextSlot(); NULL != slotPtr; slotPtr = classIterator.nextSlot()) {
+			Assert_MM_false(_evacuator->isInEvacuate(*(omrobjectptr_t*)slotPtr));
+			if (_evacuator->isInSurvivor(*(omrobjectptr_t*)slotPtr)) {
+				return true;
 			}
 		}
-
-		GC_ConstantPoolObjectSlotIterator constantPoolObjectSlotIterator((J9JavaVM*)_env->getLanguageVM(), classToScan);
-		while (NULL != (slotPtr = (omrobjectptr_t*)constantPoolObjectSlotIterator.nextSlot())) {
-			omrobjectptr_t objectptr = *slotPtr;
-			if (NULL != objectptr) {
-				if (_evacuator->isInSurvivor(objectptr) || _evacuator->isInSurvivor(objectptr)) {
-					return true;
-				}
-			}
+		/* Check if Class Object should be remembered */
+		Assert_MM_false(_evacuator->isInEvacuate((omrobjectptr_t)classToScan->classObject));
+		if (_evacuator->isInSurvivor((omrobjectptr_t)classToScan->classObject)) {
+			 return true;
 		}
-
 		classToScan = classToScan->replacedClass;
 	} while (NULL != classToScan);
 
@@ -214,23 +197,22 @@ MM_EvacuatorDelegate::scanIndirectObjects(omrobjectptr_t objectptr)
 {
 	bool shouldBeRemembered = false;
 
-	J9Class *classPtr = J9VM_J9CLASS_FROM_HEAPCLASS((J9VMThread*)_env->getLanguageVMThread(), objectptr);
-	Debug_MM_true(NULL != classPtr);
-	J9Class *classToScan = classPtr;
+	J9Class *classToScan = J9VM_J9CLASS_FROM_HEAPCLASS((J9VMThread*)_env->getLanguageVMThread(), objectptr);
+	Debug_MM_true((uintptr_t)0x99669966 == classToScan->eyecatcher);
 	do {
-		volatile omrobjectptr_t *slotPtr = NULL;
-		GC_ClassStaticsIterator classStaticsIterator(_env, classToScan);
-		while((slotPtr = classStaticsIterator.nextSlot()) != NULL) {
-			if (_evacuator->evacuateRootObject(slotPtr, true)) {
+		GC_ClassIterator classIterator(_env, classToScan);
+		/* Iterate over all slots in a class which contain an object reference and check if slot object should be evacuated */
+		for (volatile j9object_t *slotPtr = classIterator.nextSlot(); NULL != slotPtr; slotPtr = classIterator.nextSlot()) {
+			omrobjectptr_t forwardedAddress = _evacuator->evacuateRootObject((volatile omrobjectptr_t *)slotPtr);
+			if (_evacuator->isInSurvivor(forwardedAddress) || _evacuator->isInEvacuate(forwardedAddress)) {
 				shouldBeRemembered = true;
 			}
 		}
-
-		slotPtr = (omrobjectptr_t *)&(classToScan->classObject);
-		if (_evacuator->evacuateRootObject(slotPtr, true)) {
+		/* Check if Class Object should be evacuated */
+		omrobjectptr_t forwardedAddress = _evacuator->evacuateRootObject((volatile omrobjectptr_t *)&(classToScan->classObject));
+		if (_evacuator->isInSurvivor(forwardedAddress) || _evacuator->isInEvacuate(forwardedAddress)) {
 			shouldBeRemembered = true;
 		}
-
 		classToScan = classToScan->replacedClass;
 	} while (NULL != classToScan);
 
@@ -366,14 +348,14 @@ MM_EvacuatorDelegate::getReferenceObjectScanner(omrobjectptr_t objectptr, void *
 		GC_SlotObject referentPtr(_env->getOmrVM(), J9GC_J9VMJAVALANGREFERENCE_REFERENT_ADDRESS(_env, objectptr));
 #if defined(EVACUATOR_DEBUG)
 		if (_evacuator->isAnyDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
-			debugDelegateReference(EVACUATOR_DEBUG_DELEGATE_REFERENCE_SCAN_HEAP, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, referentMustBeCleared,
+			debugDelegateReference(referenceObjectOptions, EVACUATOR_DEBUG_DELEGATE_REFERENCE_SCAN_HEAP, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, referentMustBeCleared,
 					isObjectInNewSpace, referentMustBeMarked, shouldScavengeReferenceObject);
 		}
 #endif /* defined(EVACUATOR_DEBUG) */
 		if (referentMustBeCleared) {
 #if defined(EVACUATOR_DEBUG)
 			if (_evacuator->isAnyDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
-				debugDelegateReference(EVACUATOR_DEBUG_DELEGATE_REFERENCE_CLEAR, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, referentMustBeCleared,
+				debugDelegateReference(referenceObjectOptions, EVACUATOR_DEBUG_DELEGATE_REFERENCE_CLEAR, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, referentMustBeCleared,
 						isObjectInNewSpace, referentMustBeMarked, shouldScavengeReferenceObject);
 			}
 #endif /* defined(EVACUATOR_DEBUG) */
@@ -386,7 +368,7 @@ MM_EvacuatorDelegate::getReferenceObjectScanner(omrobjectptr_t objectptr, void *
 		} else if (shouldScavengeReferenceObject) {
 #if defined(EVACUATOR_DEBUG)
 			if (_evacuator->isAnyDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
-				debugDelegateReference(EVACUATOR_DEBUG_DELEGATE_REFERENCE_ADD, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, referentMustBeCleared,
+				debugDelegateReference(referenceObjectOptions, EVACUATOR_DEBUG_DELEGATE_REFERENCE_ADD, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, referentMustBeCleared,
 						isObjectInNewSpace, referentMustBeMarked, shouldScavengeReferenceObject);
 			}
 #endif /* defined(EVACUATOR_DEBUG) */
@@ -400,7 +382,7 @@ MM_EvacuatorDelegate::getReferenceObjectScanner(omrobjectptr_t objectptr, void *
 		if (_evacuator->isAnyDebugFlagSet(EVACUATOR_DEBUG_DELEGATE_REFERENCES)) {
 			GC_SlotObject referentPtr(_env->getOmrVM(), J9GC_J9VMJAVALANGREFERENCE_REFERENT_ADDRESS(_env, objectptr));
 			UDATA referenceObjectType = J9CLASS_FLAGS((J9Class *)J9GC_J9OBJECT_CLAZZ(objectptr, _env)) & J9AccClassReferenceMask;
-			debugDelegateReference(EVACUATOR_DEBUG_DELEGATE_REFERENCE_SCAN_ROOT, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, false,
+			debugDelegateReference(_env->_cycleState->_referenceObjectOptions, EVACUATOR_DEBUG_DELEGATE_REFERENCE_SCAN_ROOT, objectptr, referentPtr.readReferenceFromSlot(), referenceObjectType, false,
 					false, false, false);
 		}
 #endif /* defined(EVACUATOR_DEBUG) */
@@ -417,15 +399,14 @@ MM_EvacuatorDelegate::debugValidateObject(omrobjectptr_t objectptr, uintptr_t fo
 	J9Class *clazz = (J9Class *)J9GC_J9OBJECT_CLAZZ(objectptr, _env);
 	if ((uintptr_t)0x99669966 != clazz->eyecatcher) {
 		OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
-		omrtty_printf("%5lu %2llu %2llu:    assert; Invalid object header: evacuator=%p; object=%p; clazz=%p; *object=%p\n",
-				_controller->getEpoch()->gc, (uint64_t)_controller->getEpoch()->epoch, (uint64_t)_evacuator->getWorkerIndex(),
-				_evacuator, objectptr, clazz, *objectptr);
+		omrtty_printf("assert[%2llu]; Invalid object header: evacuator=%p; object=%p; clazz=%p; *object=%p\n",
+				(uint64_t)_evacuator->getWorkerIndex(), _evacuator, objectptr, clazz, *objectptr);
 		Debug_MM_true(false);
 	} else if (forwardedLength != _objectModel->getConsumedSizeInBytesWithHeader(objectptr)) {
 		OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
-		omrtty_printf("%5lu %2llu %2llu:    assert; Invalid object size 0x%lx != 0x%lx class instance size: evacuator=%p; object=%p; clazz=%p; *object=%p\n",
-				_controller->getEpoch()->gc, (uint64_t)_controller->getEpoch()->epoch, (uint64_t)_evacuator->getWorkerIndex(),
-				_evacuator, forwardedLength, _objectModel->getConsumedSizeInBytesWithHeader(objectptr), objectptr, clazz, *objectptr);
+		omrtty_printf("assert[%2llu]; Invalid object size 0x%llx != 0x%llx class instance size: evacuator=%p; object=%p; clazz=%p; *object=%p\n",
+				(uint64_t)_evacuator->getWorkerIndex(), forwardedLength, _objectModel->getConsumedSizeInBytesWithHeader(objectptr),
+				_evacuator, objectptr, clazz, *objectptr);
 		Debug_MM_true(false);
 	}
 }
@@ -436,9 +417,8 @@ MM_EvacuatorDelegate::debugValidateObject(MM_ForwardedHeader *forwardedHeader)
 	J9Class* clazz = _objectModel->getPreservedClass(forwardedHeader);
 	if ((uintptr_t)0x99669966 != clazz->eyecatcher) {
 		OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
-		omrtty_printf("%5lu %2llu %2llu:    assert; Invalid forwarded header: evacuator=%p; object=%p; clazz=%p; *object=%p; forwarded=%p\n",
-				_controller->getEpoch()->gc, (uint64_t)_controller->getEpoch()->epoch, (uint64_t)_evacuator->getWorkerIndex(),
-				_evacuator, forwardedHeader->getObject(), clazz, *(forwardedHeader->getObject()), forwardedHeader->getForwardedObject());
+		omrtty_printf("assert[%2llu]; Invalid forwarded header: evacuator=%p; object=%p; clazz=%p; forwarded=%p\n",
+				(uint64_t)_evacuator->getWorkerIndex(), _evacuator, forwardedHeader->getObject(), clazz, forwardedHeader->getForwardedObject());
 		Debug_MM_true(false);
 	}
 }

@@ -37,9 +37,11 @@
 #include "Forge.hpp"
 #include "ForwardedHeader.hpp"
 #include "IndexableObjectScanner.hpp"
-#include "LinkedObjectScanner.hpp"
 #include "MixedObjectScanner.hpp"
 #include "ObjectModel.hpp"
+#include "ObjectScanner.hpp"
+#include "PointerArrayObjectScanner.hpp"
+#include "ReferenceObjectScanner.hpp"
 
 #if defined(EVACUATOR_DEBUG)
 #define EVACUATOR_DEBUG_DELEGATE_REFERENCES EVACUATOR_DEBUG_DELEGATE_BASE
@@ -76,8 +78,9 @@ public:
 	 * flags as required to share this information across evacuators during gc cycles.
 	 *
 	 * @see MM_EvacuatorController::max_evacuator_public_flag (public bit mask is 0xffffffff)
+	 * @see MM_EvacuatorController::setEvacuatorFlag()
 	 */
-	enum {
+	typedef enum ClearingFlags {
 		shouldScavengeFinalizableObjects = 1
 		, shouldScavengeUnfinalizedObjects = 2
 		, shouldScavengeSoftReferenceObjects = 4
@@ -86,7 +89,15 @@ public:
 #if defined(J9VM_GC_FINALIZATION)
 		, finalizationRequired = 32
 #endif /* J9VM_GC_FINALIZATION */
-	};
+	} ClearingFlags;
+
+	typedef union ScannerState
+	{
+		uint8_t leaf[sizeof(GC_NullObjectScanner)];
+		uint8_t mixed[sizeof(GC_MixedObjectScanner)];
+		uint8_t reference[sizeof(GC_ReferenceObjectScanner)];
+		uint8_t pointerArray[sizeof(GC_PointerArrayObjectScanner)];
+	} ScannerState;
 
 /*
  * Function members
@@ -149,7 +160,7 @@ public:
 	 * @return a pointer to the object scanner
 	 */
 	GC_ObjectScanner *
-	getObjectScanner(omrobjectptr_t objectptr, void *objectScannerState, uintptr_t flags)
+	getObjectScanner(omrobjectptr_t objectptr, ScannerState *objectScannerState, uintptr_t flags)
 	{
 		Debug_MM_true(GC_ObjectScanner::isHeapScan(flags) ^ GC_ObjectScanner::isRootScan(flags));
 		/* object class must have proper eye catcher */
@@ -160,13 +171,11 @@ public:
 		GC_ObjectModel::ScanType scanType = _objectModel->getScanType(objectptr);
 		switch(scanType) {
 		case GC_ObjectModel::SCAN_MIXED_OBJECT:
+		case GC_ObjectModel::SCAN_MIXED_OBJECT_LINKED:
 		case GC_ObjectModel::SCAN_ATOMIC_MARKABLE_REFERENCE_OBJECT:
 		case GC_ObjectModel::SCAN_CLASS_OBJECT:
 		case GC_ObjectModel::SCAN_CLASSLOADER_OBJECT:
 			objectScanner = GC_MixedObjectScanner::newInstance(_env, objectptr, objectScannerState, flags);
-			break;
-		case GC_ObjectModel::SCAN_MIXED_OBJECT_LINKED:
-			objectScanner = GC_LinkedObjectScanner::newInstance(_env, objectptr, objectScannerState, flags);
 			break;
 		case GC_ObjectModel::SCAN_REFERENCE_MIXED_OBJECT:
 			objectScanner = getReferenceObjectScanner(objectptr, objectScannerState, flags);
@@ -178,6 +187,7 @@ public:
 			objectScanner = getPointerArrayObjectScanner(objectptr, objectScannerState, flags | GC_ObjectScanner::indexableObjectNoSplit);
 			break;
 		case GC_ObjectModel::SCAN_PRIMITIVE_ARRAY_OBJECT:
+			objectScanner = new (objectScannerState) GC_NullObjectScanner(_env);
 			break;
 		default:
 			Assert_GC_true_with_message2(_env, false, "Bad scan type %d for object pointer %p\n", (intptr_t)scanType, objectptr);
@@ -189,16 +199,14 @@ public:
 	GC_IndexableObjectScanner *getSplitPointerArrayObjectScanner(omrobjectptr_t objectptr, void *objectScannerState, uintptr_t splitIndex, uintptr_t splitAmount, uintptr_t flags);
 
 	bool
-	isIndexablePointerArray(omrobjectptr_t object)
-	{
-		return (OBJECT_HEADER_SHAPE_POINTERS == J9GC_CLASS_SHAPE(J9GC_J9OBJECT_CLAZZ(object, _env)));
-	}
-
-	bool
 	isIndexablePointerArray(MM_ForwardedHeader *forwardedHeader)
 	{
 		return (OBJECT_HEADER_SHAPE_POINTERS == J9GC_CLASS_SHAPE(_objectModel->getPreservedClass(forwardedHeader)));
 	}
+
+	bool isIndexablePointerArray(omrobjectptr_t object) { return _objectModel->isObjectArray(object); }
+
+	bool isIndexablePrimitiveArray(omrobjectptr_t object) { return _objectModel->isPrimitiveArray(object); }
 
 	fomrobject_t *getIndexableDataBounds(omrobjectptr_t indexableObject, uintptr_t *numberOfElements);
 
@@ -249,26 +257,28 @@ public:
 		return buffer;
 	}
 	void
-	debugDelegateReference(uintptr_t op, omrobjectptr_t reference, omrobjectptr_t referent, uintptr_t referenceObjectType, bool referentMustBeCleared,
+	debugDelegateReference(uintptr_t referenceObjectOptions, uintptr_t op, omrobjectptr_t reference, omrobjectptr_t referent, uintptr_t referenceObjectType, bool referentMustBeCleared,
 			bool isObjectInNewSpace, bool referentMustBeMarked, bool shouldScavenge)
 	{
 		OMRPORT_ACCESS_FROM_ENVIRONMENT(_env);
-		char oname[32], rname[32];
+		char oname[256], rname[256];
 		char t[] = {'?','W','S','P'};
 		const char *s[] = {" ROOT"," HEAP","CLEAR","  ADD"};
-		const char *f = "";
+		char f = ' ';
 		if (NULL != referent) {
 			MM_ForwardedHeader forwardedHeader(referent, _env->compressObjectReferences());
 			if (forwardedHeader.isForwardedPointer()) {
 				referent = forwardedHeader.getForwardedObject();
-				f = "*";
+				f = '*';
 			}
-		} else {
-			f="~";
 		}
-		omrtty_printf("reference %s[%c]: %llx %s%llx %c%c%c%c %-31s %s\n", s[op], t[referenceObjectType/J9AccClassReferenceWeak], (uint64_t)reference, f,
-				(uint64_t)referent, (referentMustBeCleared?'C':'c'), (isObjectInNewSpace?'N':'n'), (referentMustBeMarked?'M':'m'), (shouldScavenge?'S':'s'),
-				debugGetClassname(reference, &oname[0], 32), (NULL != referent) ? debugGetClassname(referent, &rname[0], 32) : "nil");
+		omrtty_printf("reference[0x%llx] %s[%c]: 0x%llx[0x%llx] -> %c%llx[0x%llx] %c%c%c%c %s-> %s\n",
+			referenceObjectOptions, s[op],  t[referenceObjectType/J9AccClassReferenceWeak],
+			(uintptr_t)reference, (NULL != reference) ? *(uint32_t*)reference : 0, f,
+			(uintptr_t)referent, (NULL != referent) ? *(uint32_t*)referent : 0,
+			(referentMustBeCleared?'C':'c'), (isObjectInNewSpace?'N':'n'), (referentMustBeMarked?'M':'m'), (shouldScavenge?'S':'s'),
+			debugGetClassname(reference, &oname[0], 256),
+			(NULL != referent) ? debugGetClassname(referent, &rname[0], 256) : "nil");
 	}
 #endif /* defined(EVACUATOR_DEBUG) */
 };

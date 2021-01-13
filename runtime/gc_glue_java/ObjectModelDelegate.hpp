@@ -405,15 +405,25 @@ public:
 
 	/**
 	 * Calculate the actual object size and the size adjusted to object alignment. The calculated object size
-	 * includes any expansion bytes allocated if the object will grow when moved.
+	 * includes any expansion bytes allocated if the object will grow when moved. This method returns a set of
+	 * bits classifying the structure of the object (defined in ObjectModelBase.hpp):
+	 *
+	 * OMR_GC_POINTER_ARRAY:	object is an array of pointers to objects
+	 * OMR_GC_PRIMITIVE:		object is scalar and contains no pointers (mixed object)
+	 * OMR_GC_PRIMITIVE_ARRAY:	object is an array of primitives (byte, int, float, ...)
+	 *
+	 * If no bits are set the object is scalar mixed object and contains pointers.
+	 *
+	 * @return the classification bits for the object
 	 *
 	 * @param[in] env points to the environment for the calling thread
 	 * @param[in] forwardedHeader pointer to the MM_ForwardedHeader instance encapsulating the object
 	 * @param[out] objectCopySizeInBytes actual object size
 	 * @param[out] objectReserveSizeInBytes size adjusted to object alignment
 	 * @param[out] hotFieldAlignmentDescriptor pointer to hot field alignment descriptor for class (or NULL)
+	 * @return object classification bits
 	 */
-	void calculateObjectDetailsForCopy(MM_EnvironmentBase *env, MM_ForwardedHeader *forwardedHeader, uintptr_t *objectCopySizeInBytes, uintptr_t *objectReserveSizeInBytes, uintptr_t *hotFieldAlignmentDescriptor);
+	uintptr_t calculateObjectDetailsForCopy(MM_EnvironmentBase *env, MM_ForwardedHeader *forwardedHeader, uintptr_t *objectCopySizeInBytes, uintptr_t *objectReserveSizeInBytes, uintptr_t *hotFieldAlignmentDescriptor);
 #endif /* defined(OMR_GC_MODRON_SCAVENGER) */
 
 	/**

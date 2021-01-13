@@ -34,7 +34,6 @@ private:
 
 protected:
 	fomrobject_t *_endPtr; /**< end scan pointer */
-	fomrobject_t *_mapPtr; /**< pointer to first slot in current scan segment */
 	uintptr_t *_descriptionPtr; /**< current description pointer */
 #if defined(J9VM_GC_LEAF_BITS)
 	uintptr_t *_leafPtr; /**< current leaf description pointer */
@@ -46,9 +45,6 @@ public:
 private:
 
 protected:
-
-public:
-
 	/**
 	 * @param env The scanning thread environment
 	 * @param scanPtr Pointer to the start of the object
@@ -56,9 +52,12 @@ public:
 	 * @param flags Scanning context flags
 	 */
 	MMINLINE GC_HeadlessMixedObjectScanner(MM_EnvironmentBase *env, fomrobject_t *scanPtr, uintptr_t size, uintptr_t flags)
+#if defined(OMR_GC_LEAF_BITS)
+		: GC_ObjectScanner(env, scanPtr, 0, 0, flags)
+#else
 		: GC_ObjectScanner(env, scanPtr, 0, flags)
+#endif /* defined(OMR_GC_LEAF_BITS) */
 		, _endPtr((fomrobject_t *)((uintptr_t)scanPtr + size))
-		, _mapPtr(scanPtr)
 		, _descriptionPtr(NULL)
 #if defined(J9VM_GC_LEAF_BITS)
 		, _leafPtr(NULL)
@@ -70,8 +69,6 @@ public:
 	MMINLINE void
 	initialize(MM_EnvironmentBase *env, uintptr_t *descriptionPtr, uintptr_t *leafPtr)
 	{
-		GC_ObjectScanner::initialize(env);
-
 		/* Initialize the slot map from description bits */
 		_scanMap = (uintptr_t)descriptionPtr;
 #if defined(J9VM_GC_LEAF_BITS)
@@ -84,7 +81,7 @@ public:
 			_leafMap >>= 1;
 			_leafPtr = NULL;
 #endif /* J9VM_GC_LEAF_BITS */
-			setNoMoreSlots();
+			setFlags(noMoreSlots, true);
 		} else {
 			_descriptionPtr = (uintptr_t *)_scanMap;
 			_scanMap = *_descriptionPtr;
@@ -94,7 +91,10 @@ public:
 			_leafMap = *_leafPtr;
 			_leafPtr += 1;
 #endif /* J9VM_GC_LEAF_BITS */
+			setFlags(noMoreSlots, false);
 		}
+		
+		GC_ObjectScanner::initialize(env);
 	}
 
 	MMINLINE void
@@ -103,8 +103,6 @@ public:
 		initialize(env, descriptionPtr, NULL);
 	}
 
-	MMINLINE uintptr_t getBytesRemaining() { return (uintptr_t)_endPtr - (uintptr_t)_scanPtr; }
-
 	/**
 	 * Return base pointer and slot bit map for next block of contiguous slots to be scanned. The
 	 * base pointer must be fomrobject_t-aligned. Bits in the bit map are scanned in order of
@@ -116,62 +114,38 @@ public:
 	 * @return a pointer to the first slot mapped by the least significant bit of the map, or NULL if no more slots
 	 */
 	virtual fomrobject_t *
-	getNextSlotMap(uintptr_t *slotMap, bool *hasNextSlotMap)
-	{
-		bool const compressed = compressObjectReferences();
-		fomrobject_t *result = NULL;
-		*slotMap = 0;
-		*hasNextSlotMap = false;
-		_mapPtr = GC_SlotObject::addToSlotAddress(_mapPtr, _bitsPerScanMap, compressed);
-		while (_endPtr > _mapPtr) {
-			*slotMap = *_descriptionPtr;
-			_descriptionPtr += 1;
-			if (0 != *slotMap) {
-				*hasNextSlotMap = _bitsPerScanMap < GC_SlotObject::subtractSlotAddresses(_endPtr, _mapPtr, compressed);
-				result = _mapPtr;
-				break;
-			}
-			_mapPtr = GC_SlotObject::addToSlotAddress(_mapPtr, _bitsPerScanMap, compressed);
-		}
-		return result;
-	}
-
 #if defined(J9VM_GC_LEAF_BITS)
-	/**
-	 * Return base pointer and slot bit map for next block of contiguous slots to be scanned. The
-	 * base pointer must be fomrobject_t-aligned. Bits in the bit map are scanned in order of
-	 * increasing significance, and the least significant bit maps to the slot at the returned
-	 * base pointer.
-	 *
-	 * @param[out] scanMap the bit map for the slots contiguous with the returned base pointer
-	 * @param[out] leafMap the leaf bit map for the slots contiguous with the returned base pointer
-	 * @param[out] hasNextSlotMap set this to true if this method should be called again, false if this map is known to be last
-	 * @return a pointer to the first slot mapped by the least significant bit of the map, or NULL if no more slots
-	 */
-	virtual fomrobject_t *
 	getNextSlotMap(uintptr_t *slotMap, uintptr_t *leafMap, bool *hasNextSlotMap)
+#else
+	getNextSlotMap(uintptr_t *slotMap, bool *hasNextSlotMap)
+#endif /* defined(J9VM_GC_LEAF_BITS) */
 	{
-		bool const compressed = compressObjectReferences();
-		fomrobject_t *result = NULL;
 		*slotMap = 0;
+#if defined(J9VM_GC_LEAF_BITS)
 		*leafMap = 0;
-		*hasNextSlotMap = false;
-		_mapPtr = GC_SlotObject::addToSlotAddress(_mapPtr, _bitsPerScanMap, compressed);
-		while (_endPtr > _mapPtr) {
+#endif /* defined(J9VM_GC_LEAF_BITS) */
+		bool const compressed = compressObjectReferences();
+		fomrobject_t *nextMapPtr = _mapPtr;
+		while (_endPtr > nextMapPtr) {
 			*slotMap = *_descriptionPtr;
 			_descriptionPtr += 1;
+#if defined(J9VM_GC_LEAF_BITS)
 			*leafMap = *_leafPtr;
 			_leafPtr += 1;
+#endif /* defined(J9VM_GC_LEAF_BITS) */
 			if (0 != *slotMap) {
-				*hasNextSlotMap = _bitsPerScanMap < GC_SlotObject::subtractSlotAddresses(_endPtr, _mapPtr, compressed);
-				result = _mapPtr;
-				break;
+				*hasNextSlotMap = _bitsPerScanMap < GC_SlotObject::subtractSlotAddresses(_endPtr, nextMapPtr, compressed);
+				return nextMapPtr;
 			}
-			_mapPtr = GC_SlotObject::addToSlotAddress(_mapPtr, _bitsPerScanMap, compressed);
+			nextMapPtr = GC_SlotObject::addToSlotAddress(nextMapPtr, _bitsPerScanMap, compressed);
 		}
-		return result;
+		*hasNextSlotMap = false;
+		return NULL;
 	}
-#endif /* J9VM_GC_LEAF_BITS */
+
+public:
+
+	MMINLINE uintptr_t getBytesRemaining() { return (uintptr_t)_endPtr - (uintptr_t)getScanPtr(); }
 };
 
 #endif /* HEADLESSMIXEDOBJECTSCANNER_HPP_ */
