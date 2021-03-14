@@ -199,14 +199,14 @@ public:
 	GC_IndexableObjectScanner *getSplitPointerArrayObjectScanner(omrobjectptr_t objectptr, void *objectScannerState, uintptr_t splitIndex, uintptr_t splitAmount, uintptr_t flags);
 
 	bool
-	isIndexablePointerArray(MM_ForwardedHeader *forwardedHeader)
+	isIndexablePointerArray(MM_ForwardedHeader *forwardedHeader) const
 	{
 		return (OBJECT_HEADER_SHAPE_POINTERS == J9GC_CLASS_SHAPE(_objectModel->getPreservedClass(forwardedHeader)));
 	}
 
-	bool isIndexablePointerArray(omrobjectptr_t object) { return _objectModel->isObjectArray(object); }
+	bool isIndexablePointerArray(omrobjectptr_t object) const { return _objectModel->isObjectArray(object); }
 
-	bool isIndexablePrimitiveArray(omrobjectptr_t object) { return _objectModel->isPrimitiveArray(object); }
+	bool isIndexablePrimitiveArray(omrobjectptr_t object) const { return _objectModel->isPrimitiveArray(object); }
 
 	fomrobject_t *getIndexableDataBounds(omrobjectptr_t indexableObject, uintptr_t *numberOfElements);
 
