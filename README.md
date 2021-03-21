@@ -20,6 +20,25 @@ OpenJDK Assembly Exception [2].
 SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
 -->
 
+# WIP: Evacuator proof of concept
+
+Evacuator is a WIP generational garbage collector prototype that uses a
+bounded scan stack to navigate the evacuation live set and direct
+evacuation copy to collocate referring pointer and head of evacuated
+referent within the same L1 cache line whenever possible. 
+
+An [overview](https://github.com/ktbriggs-gc/omr/files/6177583/EvacuatorOverview.pdf)
+of evacuator operation is available. Preliminary testing with SPECjbb2008 demonstrate
+20-30% cache line collocation of reference endpoints and a >1% improvement in benchmark
+scores when collected with evacuator versus scavenger (the default STW generational
+collector for OpenJ9).
+
+Prototype is implemented and runs on Linux builds of Eclipse OpenJ9 with
+Eclipse OMR sourced from the evacuator-redux branches of [that](https://github.com/ktbriggs-gc/omr/tree/evacuator-redux)
+OMR fork and [this](https://github.com/ktbriggs-gc/openj9/tree/evacuator-redux)
+OpenJ9 fork. Instructions for building and running OpenJ9 Java using scavenger
+(default) or evacuator (-Xgc:recursiveScanOrdering) for generational GC can be found in
+the first Appendix in the [overview](https://github.com/ktbriggs-gc/omr/files/6177583/EvacuatorOverview.pdf).
 <p align="center">
 <img src="https://github.com/eclipse/openj9/blob/master/artwork/OpenJ9.svg" alt="OpenJ9 logo" align="middle" width="50%" height="50%" />
 <p>
@@ -27,7 +46,8 @@ SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-excepti
 Welcome to the Eclipse OpenJ9 repository
 ========================================
 [![License](https://img.shields.io/badge/License-EPL%202.0-green.svg)](https://opensource.org/licenses/EPL-2.0)
-[![License](https://img.shields.io/badge/License-APL%202.0-green.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License](https://img.shields.io/badge/License-APL%20
+2.0-green.svg)](https://opensource.org/licenses/Apache-2.0)
 
 
 We're not sure which route you might have taken on your way here, but we're really pleased to see you! If you came directly from our website, you've probably already learned a lot about Eclipse OpenJ9 and how it fits in to the OpenJDK ecosystem. If you came via some other route, here are a few key links to get you started:
